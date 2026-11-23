@@ -21,6 +21,7 @@ function load(env = process.env) {
       ? new Set(env.ALLOWED_ACCOUNT_IDS.split(',').map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0))
       : null,
     maxSessionsPerAccount: env.MAX_SESSIONS_PER_ACCOUNT === undefined || env.MAX_SESSIONS_PER_ACCOUNT === '' ? 1 : Number(env.MAX_SESSIONS_PER_ACCOUNT),
+    mcpKeysPerInbox: Math.max(1, Number(env.MCP_KEYS_PER_INBOX || 1)),
     trustProxy: env.TRUST_PROXY === undefined ? 1 : Number(env.TRUST_PROXY),
   };
   return cfg;

@@ -42,6 +42,7 @@ deploy/compose-snippet.yml   Servicio a añadir al stack de AstraCalls en Coolif
 | `ALLOWED_ORIGIN` | **sí** | Único origen permitido por CORS (el de Chatwoot, sin `/` final). |
 | `ALLOWED_ACCOUNT_IDS` | no | Lista de cuentas habilitadas separadas por comas (ej. `1,7`). Si está definida y la cuenta no figura → **403** "Esta cuenta no tiene habilitado WhatsApp + Llamadas. Contacta a soporte.". Vacía = todas permitidas. |
 | `MAX_SESSIONS_PER_ACCOUNT` | no (1) | Máximo de números por cuenta. Se cuentan las bandejas de la cuenta (`GET /api/v1/accounts/{id}/inboxes`, con el token del usuario) cuyo `webhook_url` empieza con `ASTRACALLS_PUBLIC_URL`. Si ya se alcanzó → **409** "Alcanzaste el límite de números de tu plan.". |
+| `MCP_KEYS_PER_INBOX` | no (1) | Llaves MCP que el cliente puede crear por bandeja desde Chatwoot. |
 | `PORT` | no (3000) | Puerto del servicio. |
 | `TRUST_PROXY` | no (1) | Saltos de proxy confiables para el rate limit por IP (Traefik de Coolify = 1). |
 | `RATE_IP_PER_MIN` | no (20) | `POST /provision` por IP/min (el status/cancel permite ×12). |
@@ -113,8 +114,10 @@ Bandejas ya conectadas (el script las muestra al final de la pestaña **Configur
 - `GET /inbox/settings?accountId&inboxId` → `{managed, connected, phone, recording, mirrorApi, importHistory, importHistoryDays, mcpEndpoint}`
 - `PUT /inbox/settings` `{accountId, inboxId, recording?, mirrorApi?, importHistory?, importHistoryDays?}` → misma forma
 - `GET /inbox/mcp-keys?accountId&inboxId` → `{endpoint, max, keys:[{id, name, prefix, readOnly, createdAt, lastUsedAt}]}` (nunca incluye el secreto)
-- `POST /inbox/mcp-keys` `{accountId, inboxId, name, readOnly}` → `201 {key, secret, endpoint, url}` (el secreto se muestra **una sola vez**)
-- `DELETE /inbox/mcp-keys/{keyId}?accountId&inboxId` → revoca la llave
+- `POST /inbox/mcp-keys` `{accountId, inboxId, name, readOnly}` → `201 {key, secret, endpoint, url}` (el secreto se muestra **una sola vez**; `409` si la bandeja ya tiene su llave)
+- `GET /aviso-ia` → página pública con el aviso de uso responsable de IA (bloqueos, spam, privacidad, responsabilidad)
+
+Revocar llaves **no** está expuesto a los clientes: lo hace el administrador desde el botón **MCP** del panel de AstraCalls.
 
 ### Opciones de la conexión
 
@@ -126,8 +129,10 @@ Bandejas ya conectadas (el script las muestra al final de la pestaña **Configur
 
 ### Conectar una IA (MCP)
 
-Cada bandeja puede generar **llaves MCP** de AstraCalls. Una llave da acceso **solo a ese número** (leer y enviar mensajes,
-contactos, llamadas) y no permite desconectarlo, re-vincularlo ni cambiar su configuración. Puede ser de **solo lectura**.
+Cada bandeja puede generar **una llave MCP** de AstraCalls (configurable con `MCP_KEYS_PER_INBOX`). La llave da acceso **solo a ese número**
+(leer y enviar mensajes, contactos, llamadas) y no permite desconectarlo, re-vincularlo ni cambiar su configuración. Puede ser de **solo lectura**.
+Para crearla, el administrador debe marcar que leyó y acepta el aviso de uso responsable (`/aviso-ia`). La llave se muestra una sola vez;
+si se pierde o se filtra, el administrador de AstraCalls la revoca desde su panel y el cliente puede crear otra.
 La IA se conecta a `https://<ASTRACALLS_PUBLIC_URL>/mcp/<llave>`, o al servidor `.../mcp` con `Authorization: Bearer <llave>`.
 
 Seguridad: el usuario debe ser `administrator` de `accountId` (se revalida en cada consulta, con caché de 15 s); una solicitud solo la puede ver quien la creó;
@@ -140,7 +145,7 @@ sea de la misma cuenta, la misma bandeja y el mismo Chatwoot: apuntar el webhook
 ```powershell
 cd server
 npm install
-npm test        # 43 pruebas (cupos, opciones de bandeja, MCP y seguridad): flujo feliz (QR y código), 403 no-admin, rollback en cada paso, cancelar, expiración,
+npm test        # 46 pruebas (cupos, opciones de bandeja, MCP, aviso y seguridad): flujo feliz (QR y código), 403 no-admin, rollback en cada paso, cancelar, expiración,
                 # CORS, rate limit, ausencia de secretos en logs, SSE, decodificación del QR, inyección en el DOM
 ```
 

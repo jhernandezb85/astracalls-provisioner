@@ -256,6 +256,7 @@
   var PATH_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/new\/?$/;
   var POLL_MS = 2000;
   var CARD_ATTR = 'data-astra-card';
+  var MIRROR_HINT = 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones. Lo que escribes desde WhatsApp en el celular siempre aparece.';
 
   var CSS = [
     '.astra-ov{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:inherit}',
@@ -432,7 +433,7 @@
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
       el('div', { class: 'astra-h astra-ind', text: 'Llegan como notas privadas, sin reenviar nada a tus contactos. Puede crear muchas conversaciones de golpe.' }),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
-      el('div', { class: 'astra-h astra-ind', text: 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones.' }),
+      el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
       el('div', { class: 'astra-row' }, [cancel, go])
@@ -689,35 +690,45 @@
     var ro = el('input', { type: 'checkbox' });
     var mcpErr = el('div', { class: 'astra-err', style: 'display:none' });
     var createBtn = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Crear llave' });
+    var accept = el('input', { type: 'checkbox' });
+    var avisoUrl = PROV + '/aviso-ia';
+    var createBox = el('div', null, [
+      el('div', { class: 'astra-warn' }, [
+        el('strong', { text: 'Importante: ' }),
+        'una IA conectada a tu número puede enviar mensajes por ti. El envío masivo o a personas que no te escribieron puede hacer que WhatsApp bloquee el número de forma permanente. ',
+        el('a', { href: avisoUrl, target: '_blank', rel: 'noopener noreferrer', text: 'Lee el aviso de uso responsable', style: 'color:var(--a-ac);font-weight:500' }),
+        '.'
+      ]),
+      el('label', { class: 'astra-ck' }, [accept, 'Leí y acepto el aviso de uso responsable de IA.']),
+      el('div', { class: 'astra-inrow' }, [keyName, el('label', { class: 'astra-ck', style: 'margin-top:0' }, [ro, 'Solo lectura']), createBtn])
+    ]);
+    createBtn.disabled = true;
+    accept.addEventListener('change', function () { createBtn.disabled = !accept.checked; });
 
     function loadKeys() {
       keysBox.textContent = '';
-      keysBox.appendChild(el('div', { class: 'astra-wait' }, [el('span', { class: 'astra-sp' }), 'Cargando llaves…']));
+      keysBox.appendChild(el('div', { class: 'astra-wait' }, [el('span', { class: 'astra-sp' }), 'Cargando…']));
       api('GET', '/inbox/mcp-keys' + q).then(function (r) {
         keysBox.textContent = '';
-        if (!r.keys.length) { keysBox.appendChild(el('p', { text: 'Todavía no hay llaves para esta bandeja.', style: 'margin-top:10px' })); return; }
+        var full = r.keys.length >= (r.max || 1);
+        createBox.style.display = full ? 'none' : '';
+        if (!r.keys.length) return;
         var tb = el('tbody');
         r.keys.forEach(function (k) {
-          var rm = el('button', { class: 'astra-b', type: 'button', text: 'Revocar' });
-          rm.addEventListener('click', function () {
-            if (!window.confirm('¿Revocar la llave "' + (k.name || k.prefix) + '"? La IA que la use dejará de funcionar.')) return;
-            rm.disabled = true;
-            api('DELETE', '/inbox/mcp-keys/' + encodeURIComponent(k.id) + q).then(loadKeys, function (e) {
-              rm.disabled = false; mcpErr.textContent = e.message; mcpErr.style.display = '';
-            });
-          });
           tb.appendChild(el('tr', null, [
             el('td', { text: k.name || '—' }),
             el('td', null, [el('code', { text: (k.prefix || '') + '…' })]),
             el('td', { text: k.readOnly ? 'Solo lectura' : 'Lectura y envío' }),
-            el('td', { text: fmtDate(k.lastUsedAt) }),
-            el('td', { style: 'text-align:right' }, [rm])
+            el('td', { text: fmtDate(k.lastUsedAt) })
           ]));
         });
         keysBox.appendChild(el('table', { class: 'astra-keys' }, [
-          el('thead', null, [el('tr', null, [el('th', { text: 'Nombre' }), el('th', { text: 'Llave' }), el('th', { text: 'Permiso' }), el('th', { text: 'Último uso' }), el('th')])]),
+          el('thead', null, [el('tr', null, [el('th', { text: 'Llave de IA' }), el('th', { text: 'Inicio' }), el('th', { text: 'Permiso' }), el('th', { text: 'Último uso' })])]),
           tb
         ]));
+        if (full) {
+          keysBox.appendChild(el('div', { class: 'astra-h', style: 'margin-top:8px', text: 'Esta bandeja ya tiene su llave de IA. Si la perdiste o crees que se filtró, contacta a soporte para revocarla; después podrás crear una nueva.' }));
+        }
       }, function (e) {
         keysBox.textContent = '';
         keysBox.appendChild(el('div', { class: 'astra-err', text: e.message }));
@@ -726,6 +737,7 @@
 
     createBtn.addEventListener('click', function () {
       mcpErr.style.display = 'none';
+      if (!accept.checked) return;
       createBtn.disabled = true;
       api('POST', '/inbox/mcp-keys', { accountId: accountId, inboxId: inboxId, name: keyName.value.trim(), readOnly: ro.checked })
         .then(function (r) {
@@ -738,14 +750,14 @@
           hide.addEventListener('click', function () { created.textContent = ''; });
           created.textContent = '';
           created.appendChild(el('div', { class: 'astra-warn' }, [
-            el('strong', { text: 'Llave creada. Cópiala ahora: no se volverá a mostrar.' }),
+            el('strong', { text: 'Llave creada. Cópiala ahora y guárdala en un lugar seguro: no podrás volver a verla ni crear otra.' }),
             el('div', { class: 'astra-secret', text: r.url }),
             el('div', { class: 'astra-h', text: 'Si tu IA pide servidor y llave por separado: servidor ' + r.endpoint + ' con el encabezado "Authorization: Bearer <llave>".' }),
             el('div', { class: 'astra-inrow' }, [cUrl, cKey, hide])
           ]));
           loadKeys();
         }, function (e) { mcpErr.textContent = e.message; mcpErr.style.display = ''; })
-        .then(function () { createBtn.disabled = false; });
+        .then(function () { createBtn.disabled = !accept.checked; });
     });
 
     [
@@ -753,14 +765,14 @@
       el('p', { text: 'Opciones de esta bandeja en AstraCalls. Los cambios se guardan al instante.' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
-      el('div', { class: 'astra-h astra-ind', text: 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones.' }),
+      el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),
       el('div', { class: 'astra-h astra-ind', text: 'Solo aplica la próxima vez que se vincule el número (WhatsApp envía el historial al vincular).' }),
       saved,
       el('h3', { text: 'Conectar tu IA (MCP)' }),
-      el('p', { text: 'Crea una llave para que un asistente de IA (Claude, ChatGPT, n8n…) use este número: leer y enviar mensajes, ver contactos y hacer llamadas. Cada llave solo da acceso a este número y no permite desconectarlo ni cambiar su configuración.' }),
+      el('p', { text: 'Crea una llave para que un asistente de IA (Claude, ChatGPT, n8n…) use este número: leer y enviar mensajes, ver contactos y hacer llamadas. La llave solo da acceso a este número y no permite desconectarlo ni cambiar su configuración. Guárdala en un lugar seguro: solo se muestra una vez y cada bandeja tiene una sola llave.' }),
       el('div', { class: 'astra-h', text: 'Servidor MCP: ' + (data.mcpEndpoint || '') }),
-      el('div', { class: 'astra-inrow' }, [keyName, el('label', { class: 'astra-ck', style: 'margin-top:0' }, [ro, 'Solo lectura']), createBtn]),
+      createBox,
       mcpErr,
       created,
       keysBox

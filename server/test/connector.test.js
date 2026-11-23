@@ -171,15 +171,13 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   const calls = mockApi(dom, {
     'GET /inbox/settings': () => [200, MANAGED],
     'PUT /inbox/settings': (u, o) => [200, { ...MANAGED, ...JSON.parse(o.body) }],
-    'GET /inbox/mcp-keys': () => [200, { endpoint: 'https://calls.example.com/mcp', max: 20, keys }],
+    'GET /inbox/mcp-keys': () => [200, { endpoint: 'https://calls.example.com/mcp', max: 1, keys }],
     'POST /inbox/mcp-keys': (u, o) => {
       const b = JSON.parse(o.body);
       keys = [{ id: 'k1', name: b.name, prefix: 'acmcp_abc123', readOnly: b.readOnly, createdAt: '2026-11-23T00:00:00Z' }];
       return [201, { key: keys[0], secret: 'acmcp_SECRETO', endpoint: 'https://calls.example.com/mcp', url: 'https://calls.example.com/mcp/acmcp_SECRETO' }];
     },
-    'DELETE /inbox/mcp-keys/k1': () => { keys = []; return [200, { deleted: true }]; },
   });
-  dom.window.confirm = () => true;
   const d = dom.window.document;
   // dispara el observador
   d.body.appendChild(d.createElement('i'));
@@ -190,8 +188,11 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   assert.equal(d.getElementById('cfgtab').lastElementChild, card, 'al final de la pestaña Configuración');
   assert.match(card.textContent, /Conectado · \+5358310867/);
   assert.match(card.textContent, /Conectar tu IA \(MCP\)/);
-  assert.match(card.textContent, /Todavía no hay llaves/);
   assert.equal(calls.find((c) => c.key === 'GET /inbox/settings').url, 'https://prov.example.com/inbox/settings?accountId=1&inboxId=38');
+  assert.match(card.textContent, /siempre aparece/);
+  const aviso = card.querySelector('a[href="https://prov.example.com/aviso-ia"]');
+  assert.ok(aviso, 'enlace al aviso');
+  assert.equal(aviso.getAttribute('target'), '_blank');
 
   // guardar una opción
   const boxes = card.querySelectorAll('input[type=checkbox]');
@@ -201,20 +202,24 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   assert.deepEqual(put.body, { mirrorApi: true, accountId: 1, inboxId: 38 });
   assert.match(card.textContent, /Guardado ✓/);
 
-  // crear llave MCP
+  // crear llave MCP: el botón está bloqueado hasta aceptar el aviso
+  const createBtn = [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave');
+  assert.equal(createBtn.disabled, true, 'sin aceptar el aviso no se puede crear');
+  const accept = [...card.querySelectorAll('label')].find((l) => /Leí y acepto/.test(l.textContent)).querySelector('input');
+  accept.checked = true; accept.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(createBtn.disabled, false);
   card.querySelector('input[type=text]').value = 'Mi bot';
-  [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave').click();
-  await tick(120);
+  createBtn.click();
+  await tick(150);
   assert.deepEqual(calls.find((c) => c.key === 'POST /inbox/mcp-keys').body, { accountId: 1, inboxId: 38, name: 'Mi bot', readOnly: false });
   assert.equal(card.querySelector('.astra-secret').textContent, 'https://calls.example.com/mcp/acmcp_SECRETO');
-  assert.match(card.textContent, /no se volverá a mostrar/);
+  assert.match(card.textContent, /no podrás volver a verla ni crear otra/);
   assert.match(card.querySelector('table.astra-keys').textContent, /Mi bot/);
 
-  // revocar
-  [...card.querySelectorAll('button')].find((b) => b.textContent === 'Revocar').click();
-  await tick(120);
-  assert.ok(calls.some((c) => c.key === 'DELETE /inbox/mcp-keys/k1' && c.url.endsWith('?accountId=1&inboxId=38')));
-  assert.match(card.textContent, /Todavía no hay llaves/);
+  // con la llave ya creada: no se puede crear otra ni revocar desde Chatwoot
+  assert.equal(createBtn.closest('div[style]').style.display, 'none', 'formulario oculto');
+  assert.ok(![...card.querySelectorAll('button')].some((b) => b.textContent === 'Revocar'));
+  assert.match(card.textContent, /contacta a soporte/);
   dom.window.close();
 });
 

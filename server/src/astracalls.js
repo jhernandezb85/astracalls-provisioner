@@ -105,11 +105,6 @@ class AstraCallsClient {
     return r.data; // {key, secret, endpoint, url}
   }
 
-  async deleteMcpKey(sid, kid) {
-    const r = await this._req('DELETE', `/api/sessions/${encodeURIComponent(sid)}/mcp-keys/${encodeURIComponent(kid)}`, undefined, { allow404: true });
-    return r.status !== 404;
-  }
-
   mcpEndpoint() {
     return `${this.publicUrl}/mcp`;
   }

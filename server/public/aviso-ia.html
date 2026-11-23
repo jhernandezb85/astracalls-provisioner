@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Uso responsable de IA en WhatsApp</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f7f7f8; --card:#fff; --fg:#1c2024; --mut:#60646c; --bd:#e0e1e6; --ac:#2781f6; --warn:#b54708; --warnbg:#fff7ed; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111113; --card:#1c1d20; --fg:#edeef0; --mut:#b0b4ba; --bd:#2e3035; --ac:#3b9eff; --warn:#ffb366; --warnbg:#2a1f14; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:24px 16px; }
+  main { max-width:760px; margin:0 auto; background:var(--card); border:1px solid var(--bd); border-radius:16px; padding:28px 24px; }
+  h1 { font-size:24px; line-height:1.3; margin:0 0 8px; }
+  h2 { font-size:18px; margin:28px 0 8px; }
+  p, li { color:var(--fg); }
+  .lead { color:var(--mut); margin:0 0 16px; }
+  .warn { background:var(--warnbg); border:1px solid var(--warn); color:var(--fg); border-radius:12px; padding:14px 16px; margin:16px 0; }
+  .warn strong { color:var(--warn); }
+  ul { padding-left:22px; }
+  li { margin:6px 0; }
+  code { font:14px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); border:1px solid var(--bd); border-radius:6px; padding:1px 6px; }
+  footer { color:var(--mut); font-size:14px; margin-top:28px; border-top:1px solid var(--bd); padding-top:16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Uso responsable de IA en tu número de WhatsApp</h1>
+  <p class="lead">Lee este aviso antes de crear una llave MCP. Al crearla aceptas estas condiciones.</p>
+
+  <p>Conectar una IA por MCP directamente a tu número de WhatsApp le permite <strong>leer tus conversaciones, ver tus contactos,
+  enviar mensajes y hacer llamadas en tu nombre</strong>, sin que una persona revise cada acción. Es una herramienta poderosa,
+  y también un riesgo si se usa mal.</p>
+
+  <div class="warn">
+    <strong>Riesgo de bloqueo del número.</strong> Esta conexión no usa la API oficial de WhatsApp Business de Meta.
+    WhatsApp puede <strong>restringir, suspender o bloquear permanentemente</strong> un número que detecte como automatizado,
+    abusivo o que genere reportes. Un bloqueo puede ser definitivo y no depende de nosotros revertirlo.
+  </div>
+
+  <h2>Qué puede provocar un bloqueo</h2>
+  <ul>
+    <li>Enviar mensajes masivos o en ráfagas, sobre todo a personas que no te han escrito antes.</li>
+    <li>Escribir a contactos que no te dieron permiso (listas compradas, números obtenidos de internet, etc.).</li>
+    <li>Mensajes repetitivos, promocionales o que los destinatarios marcan como spam o bloquean.</li>
+    <li>Responder a velocidades imposibles para una persona o las 24 horas sin pausa.</li>
+    <li>Agregar o sacar personas de grupos de forma automática y en cantidad.</li>
+    <li>Usar un número nuevo o recién vinculado para enviar mucho volumen desde el primer día.</li>
+  </ul>
+
+  <h2>Buenas prácticas</h2>
+  <ul>
+    <li>Empieza con una llave de <strong>solo lectura</strong> si tu IA solo necesita consultar información.</li>
+    <li>Usa la IA principalmente para <strong>responder</strong> a quien te escribe, no para iniciar conversaciones en masa.</li>
+    <li>Limita la cantidad de mensajes por minuto y por día en tu automatización, y respeta los horarios.</li>
+    <li>Revisa periódicamente lo que la IA envía. Activa la opción de ver en el CRM los mensajes enviados por API.</li>
+    <li>Ofrece siempre una forma de hablar con una persona y respeta a quien pida no recibir más mensajes.</li>
+  </ul>
+
+  <h2>Errores de la IA</h2>
+  <p>Los modelos de IA pueden equivocarse, inventar datos, malinterpretar instrucciones o responder de forma inapropiada.
+  <strong>Eres responsable de todo lo que se envíe desde tu número</strong>, lo haya escrito una persona o la IA.
+  No uses la IA para dar información médica, legal o financiera sin supervisión humana.</p>
+
+  <h2>Privacidad de tus clientes</h2>
+  <p>Cuando la IA lee tus conversaciones, ese contenido se envía al proveedor de IA que elijas (por ejemplo OpenAI, Anthropic,
+  Google u otro) y queda sujeto a sus políticas. Asegúrate de tener derecho a compartir esos datos y de cumplir las leyes de
+  protección de datos que apliquen a tu negocio. No conectes la IA si tus conversaciones incluyen información que no puedes compartir con terceros.</p>
+
+  <h2>Tu llave es como una contraseña</h2>
+  <ul>
+    <li>Quien tenga la llave puede usar tu número como si fuera tú. <strong>No la compartas</strong> ni la publiques
+      en capturas, documentos, repositorios de código o chats.</li>
+    <li>Cada bandeja tiene <strong>una sola llave</strong> y solo se muestra una vez, al crearla. Guárdala en un lugar seguro,
+      como un gestor de contraseñas.</li>
+    <li>Si la pierdes o crees que alguien más la tiene, <strong>contacta a soporte</strong> de inmediato para revocarla.
+      Después podrás crear una nueva.</li>
+    <li>La llave solo da acceso a ese número: no permite desconectarlo, volver a vincularlo ni cambiar su configuración.</li>
+  </ul>
+
+  <h2>Responsabilidad</h2>
+  <p>El servicio se ofrece "tal cual". No garantizamos que WhatsApp no restrinja tu número ni respondemos por bloqueos,
+  pérdida de conversaciones, mensajes enviados por la IA o daños derivados del uso de la conexión MCP. El uso de la
+  conexión debe cumplir los <strong>Términos de servicio y las Políticas de WhatsApp</strong>.</p>
+
+  <footer>Si tienes dudas sobre cómo conectar tu IA de forma segura, consulta a soporte antes de crear la llave.</footer>
+</main>
+</body>
+</html>

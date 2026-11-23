@@ -237,16 +237,22 @@ class Provisioner {
 
   async listMcpKeys(devise, accountId, inboxId) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
-    const { keys, max } = await this.ac.listMcpKeys(sid);
+    const { keys } = await this.ac.listMcpKeys(sid);
     return {
       endpoint: this.ac.mcpEndpoint(),
-      max,
+      max: this.cfg.mcpKeysPerInbox,
       keys: keys.map((k) => ({ id: k.id, name: k.name, prefix: k.prefix, readOnly: !!k.readOnly, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt || null })),
     };
   }
 
   async createMcpKey(devise, { accountId, inboxId, name, readOnly }) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    // cupo de llaves por bandeja (por defecto 1). El cliente no puede revocar desde
+    // Chatwoot: si la pierde, el administrador la revoca en el panel de AstraCalls.
+    const { keys } = await this.ac.listMcpKeys(sid);
+    if (keys.length >= this.cfg.mcpKeysPerInbox) {
+      throw new HttpError(409, 'Esta bandeja ya tiene su llave de IA. Si la perdiste o crees que se filtró, contacta a soporte para revocarla.', 'mcp_key_limit');
+    }
     const clean = sanitizeInboxName(name) || 'Mi IA';
     const r = await this.ac.createMcpKey(sid, clean, !!readOnly);
     const endpoint = this.ac.mcpEndpoint();
@@ -257,15 +263,6 @@ class Provisioner {
       endpoint,
       url: `${endpoint}/${r.secret}`,
     };
-  }
-
-  async deleteMcpKey(devise, { accountId, inboxId, keyId }) {
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(keyId || ''))) throw new HttpError(400, 'Llave no válida.', 'bad_request');
-    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
-    const ok = await this.ac.deleteMcpKey(sid, keyId);
-    if (!ok) throw new HttpError(404, 'La llave no existe o ya fue revocada.', 'not_found');
-    this.log.info('llave MCP revocada', { accountId: Number(accountId), inboxId: Number(inboxId) });
-    return { deleted: true };
   }
 
   // ---------- estado ----------

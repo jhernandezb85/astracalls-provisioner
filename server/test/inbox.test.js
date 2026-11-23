@@ -116,7 +116,49 @@ test('seguridad: solo administradores de la cuenta', async () => {
   } finally { await s.close(); }
 });
 
-test('llaves MCP: crear (secreto una sola vez), listar sin secreto y revocar', async () => {
+test('llaves MCP: una sola por bandeja y sin revocar desde Chatwoot', async () => {
+  const s = await setup();
+  try {
+    await provisioned(s);
+    const c = await s.call('POST', '/inbox/mcp-keys', { body: { accountId: 7, inboxId: 100, name: 'Bot' } });
+    assert.equal(c.status, 201);
+    const again = await s.call('POST', '/inbox/mcp-keys', { body: { accountId: 7, inboxId: 100, name: 'Otro' } });
+    assert.equal(again.status, 409);
+    assert.match(again.json.error, /ya tiene su llave/);
+    assert.equal(s.ac.state.sessions.get('sess1').mcp.length, 1);
+    const l = await s.call('GET', '/inbox/mcp-keys' + q(100));
+    assert.equal(l.json.max, 1);
+    // no existe ruta para revocar
+    assert.equal((await s.call('DELETE', `/inbox/mcp-keys/${c.json.key.id}` + q(100))).status, 404);
+    assert.equal(s.ac.state.sessions.get('sess1').mcp.length, 1, 'la llave sigue');
+    assert.ok(!s.ac.state.calls.some((x) => x.op === 'deleteMcp'));
+  } finally { await s.close(); }
+});
+
+test('MCP_KEYS_PER_INBOX permite más de una llave', async () => {
+  const s = await setup({ env: { MCP_KEYS_PER_INBOX: '2' } });
+  try {
+    await provisioned(s);
+    assert.equal((await s.call('POST', '/inbox/mcp-keys', { body: { accountId: 7, inboxId: 100, name: 'a' } })).status, 201);
+    assert.equal((await s.call('POST', '/inbox/mcp-keys', { body: { accountId: 7, inboxId: 100, name: 'b' } })).status, 201);
+    assert.equal((await s.call('POST', '/inbox/mcp-keys', { body: { accountId: 7, inboxId: 100, name: 'c' } })).status, 409);
+  } finally { await s.close(); }
+});
+
+test('la página del aviso de uso responsable se sirve como HTML con CSP', async () => {
+  const s = await setup();
+  try {
+    const r = await s.call('GET', '/aviso-ia', { devise: null, origin: null });
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /text\/html/);
+    assert.match(r.headers.get('content-security-policy'), /default-src 'none'/);
+    const js = await s.call('GET', '/connector.js', { devise: null, origin: null });
+    assert.match(js.headers.get('content-type'), /javascript/);
+    assert.equal(js.headers.get('cache-control'), 'no-cache');
+  } finally { await s.close(); }
+});
+
+test('llaves MCP: crear (secreto una sola vez) y listar sin secreto', async () => {
   const s = await setup();
   try {
     await provisioned(s);
@@ -133,12 +175,6 @@ test('llaves MCP: crear (secreto una sola vez), listar sin secreto y revocar', a
     assert.equal(l.status, 200);
     assert.equal(l.json.keys.length, 1);
     assert.ok(!JSON.stringify(l.json).includes(c.json.secret), 'la lista nunca trae el secreto');
-
-    const d = await s.call('DELETE', `/inbox/mcp-keys/${c.json.key.id}` + q(100));
-    assert.equal(d.status, 200);
-    assert.equal((await s.call('GET', '/inbox/mcp-keys' + q(100))).json.keys.length, 0);
-    assert.equal((await s.call('DELETE', `/inbox/mcp-keys/${c.json.key.id}` + q(100))).status, 404);
-    assert.equal((await s.call('DELETE', '/inbox/mcp-keys/..%2Fx' + q(100))).status, 400);
 
     // el secreto nunca aparece en los logs
     assert.ok(!JSON.stringify(s.logs).includes(c.json.secret));

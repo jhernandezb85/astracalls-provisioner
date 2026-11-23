@@ -49,7 +49,17 @@ function createApp({ cfg, provisioner, log }) {
   app.use(express.static(path.join(__dirname, '..', 'public'), {
     maxAge: '5m',
     index: false,
-    setHeaders: (res) => res.setHeader('Content-Type', 'application/javascript; charset=utf-8'),
+    extensions: ['html'],
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js')) {
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache'); // revalida con ETag: los cambios llegan al recargar
+      }
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+      }
+    },
   }));
 
   app.get('/healthz', (req, res) => res.json({ ok: true }));
@@ -130,11 +140,7 @@ function createApp({ cfg, provisioner, log }) {
     res.status(201).json(await provisioner.createMcpKey(devise, { accountId: b.accountId, inboxId: b.inboxId, name: b.name, readOnly: b.readOnly === true }));
   }));
 
-  api.delete('/inbox/mcp-keys/:kid', wrap(async (req, res) => {
-    writeLimit(req);
-    const devise = needDevise(req);
-    res.json(await provisioner.deleteMcpKey(devise, { accountId: req.query.accountId, inboxId: req.query.inboxId, keyId: req.params.kid }));
-  }));
+  // Revocar llaves MCP NO está expuesto a los clientes: lo hace el administrador en el panel de AstraCalls.
 
   api.get('/provision/:id/status', wrap(async (req, res) => {
     if (!limIpStatus(req.ip) || !limIdStatus(req.params.id)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited');
