@@ -125,6 +125,10 @@ class Provisioner {
         import_history: !!importHistory,
         import_history_days: histDays,
         mirror_api: !!mirrorApi,
+        // fork de AstraCalls (rama lhcia): lo escrito desde el celular como mensaje normal
+        // y checks de entregado/leído. La imagen oficial ignora estos campos.
+        mirror_as_outgoing: true,
+        read_receipts: true,
       });
       // 5) Grabación
       if (record) await this.ac.setRecording(created.sid, true);
@@ -215,17 +219,21 @@ class Provisioner {
       phone: String(s.jid || s.lastJid || '').split(/[:@]/)[0] || '',
       recording,
       mirrorApi: !!cfg.mirror_api,
+      deviceOutgoing: !!cfg.mirror_as_outgoing,
+      readReceipts: !!cfg.read_receipts,
       importHistory: !!cfg.import_history,
       importHistoryDays: clampDays(cfg.import_history_days),
       mcpEndpoint: this.ac.mcpEndpoint(),
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, importHistory, importHistoryDays }) {
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceOutgoing, readReceipts, importHistory, importHistoryDays }) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
     if (typeof recording === 'boolean') await this.ac.setRecording(sid, recording);
     const patch = {};
     if (typeof mirrorApi === 'boolean') patch.mirror_api = mirrorApi;
+    if (typeof deviceOutgoing === 'boolean') patch.mirror_as_outgoing = deviceOutgoing;
+    if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
     if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);
     // AstraCalls conserva lo que no viene en el payload (y el token si va vacío)

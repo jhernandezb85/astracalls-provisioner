@@ -124,6 +124,10 @@ Revocar llaves **no** está expuesto a los clientes: lo hace el administrador de
 | Opción | Por defecto | Qué hace |
 |---|---|---|
 | Grabar llamadas | sí | Graba las llamadas y las deja como nota privada en Chatwoot. |
+| Checks de entregado y leído | sí* | Los mensajes del agente muestran ✓✓ entregado / leído; un envío fallido queda marcado con el motivo. |
+| Lo escrito desde el celular como mensaje normal | sí* | Entra como mensaje de salida en vez de nota privada. Cuenta como respuesta humana: abre conversaciones pendientes de bots. |
+
+\* Requieren la versión de AstraCalls con `read_receipts` / `mirror_as_outgoing`; con otra versión no tienen efecto.
 | Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 como notas privadas, sin reenviar nada. **Solo funciona si está activa al vincular** el número; puede crear muchas conversaciones de golpe. |
 | Mostrar mensajes enviados por API | no | Lo que se envía por la API de AstraCalls (ej. n8n) aparece como nota privada en la conversación. |
 

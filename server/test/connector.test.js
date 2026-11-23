@@ -189,17 +189,24 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   assert.match(card.textContent, /Conectado · \+5358310867/);
   assert.match(card.textContent, /Conectar tu IA \(MCP\)/);
   assert.equal(calls.find((c) => c.key === 'GET /inbox/settings').url, 'https://prov.example.com/inbox/settings?accountId=1&inboxId=38');
-  assert.match(card.textContent, /siempre aparece/);
+  assert.match(card.textContent, /sin abrir conversaciones pendientes/);
+  assert.match(card.textContent, /checks de entregado y leído/);
+  assert.match(card.textContent, /desde el celular entra como mensaje normal/);
   const aviso = card.querySelector('a[href="https://prov.example.com/aviso-ia"]');
   assert.ok(aviso, 'enlace al aviso');
   assert.equal(aviso.getAttribute('target'), '_blank');
 
   // guardar una opción
-  const boxes = card.querySelectorAll('input[type=checkbox]');
-  boxes[1].checked = true; boxes[1].dispatchEvent(new dom.window.Event('change'));
+  const boxFor = (re) => [...card.querySelectorAll('label')].find((l) => re.test(l.textContent)).querySelector('input');
+  const mirrorBox = boxFor(/enviados por API/);
+  mirrorBox.checked = true; mirrorBox.dispatchEvent(new dom.window.Event('change'));
   await tick(80);
   const put = calls.find((c) => c.key === 'PUT /inbox/settings');
   assert.deepEqual(put.body, { mirrorApi: true, accountId: 1, inboxId: 38 });
+  const ticksBox = boxFor(/checks de entregado/);
+  ticksBox.checked = true; ticksBox.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.readReceipts === true));
   assert.match(card.textContent, /Guardado ✓/);
 
   // crear llave MCP: el botón está bloqueado hasta aceptar el aviso

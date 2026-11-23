@@ -120,6 +120,7 @@ function createApp({ cfg, provisioner, log }) {
     res.json(await provisioner.updateInboxSettings(devise, {
       accountId: b.accountId, inboxId: b.inboxId,
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
+      deviceOutgoing: bool(b.deviceOutgoing), readReceipts: bool(b.readReceipts),
       importHistoryDays: b.importHistoryDays,
     }));
   }));

@@ -256,7 +256,7 @@
   var PATH_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/new\/?$/;
   var POLL_MS = 2000;
   var CARD_ATTR = 'data-astra-card';
-  var MIRROR_HINT = 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones. Lo que escribes desde WhatsApp en el celular siempre aparece.';
+  var MIRROR_HINT = 'Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
     '.astra-ov{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:inherit}',
@@ -655,10 +655,12 @@
     });
     var rec = el('input', { type: 'checkbox' }); rec.checked = !!data.recording;
     var mirror = el('input', { type: 'checkbox' }); mirror.checked = !!data.mirrorApi;
+    var ticks = el('input', { type: 'checkbox' }); ticks.checked = !!data.readReceipts;
+    var devOut = el('input', { type: 'checkbox' }); devOut.checked = !!data.deviceOutgoing;
     var hist = el('input', { type: 'checkbox' }); hist.checked = !!data.importHistory;
     var days = daysSelect('astra-inbox-days', data.importHistoryDays || 30);
     var saved = el('div', { class: 'astra-saved' });
-    var inputs = [rec, mirror, hist, days];
+    var inputs = [rec, ticks, devOut, mirror, hist, days];
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -674,6 +676,8 @@
     }
     rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
     mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
+    ticks.addEventListener('change', function () { save({ readReceipts: ticks.checked }, function () { ticks.checked = !ticks.checked; }); });
+    devOut.addEventListener('change', function () { save({ deviceOutgoing: devOut.checked }, function () { devOut.checked = !devOut.checked; }); });
     hist.addEventListener('change', function () {
       save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
     });
@@ -765,6 +769,10 @@
       el('h2', null, ['WhatsApp + Llamadas', pill]),
       el('p', { text: 'Opciones de esta bandeja en AstraCalls. Los cambios se guardan al instante.' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
+      el('label', { class: 'astra-ck' }, [ticks, 'Mostrar checks de entregado y leído']),
+      el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó.' }),
+      el('label', { class: 'astra-ck' }, [devOut, 'Lo que escribes desde el celular entra como mensaje normal']),
+      el('div', { class: 'astra-h astra-ind', text: 'Si lo desactivas, entra como nota privada. Como mensaje normal cuenta como respuesta de una persona: si la conversación estaba pendiente con un bot, se abre.' }),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),

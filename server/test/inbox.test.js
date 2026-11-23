@@ -21,6 +21,9 @@ test('aprovisionar con historial y espejo de API los pasa a AstraCalls', async (
     assert.equal(cfg.import_history, true);
     assert.equal(cfg.import_history_days, 90);
     assert.equal(cfg.mirror_api, true);
+    // fork de AstraCalls: celular como mensaje normal y checks, activados por defecto
+    assert.equal(cfg.mirror_as_outgoing, true);
+    assert.equal(cfg.read_receipts, true);
   } finally { await s.close(); }
 });
 
@@ -48,13 +51,16 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
-      mirrorApi: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
+      mirrorApi: false, deviceOutgoing: true, readReceipts: true,
+      importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
 
-    r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, importHistory: true, importHistoryDays: 7 } });
+    r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, deviceOutgoing: false, readReceipts: false, importHistory: true, importHistoryDays: 7 } });
     assert.equal(r.status, 200);
     assert.equal(r.json.recording, true);
     assert.equal(r.json.mirrorApi, true);
+    assert.equal(r.json.deviceOutgoing, false);
+    assert.equal(r.json.readReceipts, false);
     assert.equal(r.json.importHistory, true);
     assert.equal(r.json.importHistoryDays, 7);
 
