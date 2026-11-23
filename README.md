@@ -104,19 +104,43 @@ Si tu Chatwoot define una Content-Security-Policy estricta, añade `provision.ex
 Todas las rutas (salvo `/connector.js` y `/healthz`) exigen los headers devise del usuario (`access-token`, `client`, `uid`),
 que el script lee de la cookie `cw_d_session_info`, y solo aceptan CORS desde `ALLOWED_ORIGIN`.
 
-- `POST /provision` `{accountId, inboxName, phone, record, method:"qr"|"code"}` → `201 {provisionId}`
+- `POST /provision` `{accountId, inboxName, phone, record, method:"qr"|"code", importHistory?, importHistoryDays?: 7|30|90, mirrorApi?}` → `201 {provisionId}`
 - `GET /provision/{id}/status` → `{state: starting|qr|code|connected|expired|cancelled, qr?, code?, inboxId, accountId, connectedPhone?}`
 - `DELETE /provision/{id}` → cancela y revierte (si aún no se conectó)
 
+Bandejas ya conectadas (el script las muestra en **Ajustes** de la bandeja):
+
+- `GET /inbox/settings?accountId&inboxId` → `{managed, connected, phone, recording, mirrorApi, importHistory, importHistoryDays, mcpEndpoint}`
+- `PUT /inbox/settings` `{accountId, inboxId, recording?, mirrorApi?, importHistory?, importHistoryDays?}` → misma forma
+- `GET /inbox/mcp-keys?accountId&inboxId` → `{endpoint, max, keys:[{id, name, prefix, readOnly, createdAt, lastUsedAt}]}` (nunca incluye el secreto)
+- `POST /inbox/mcp-keys` `{accountId, inboxId, name, readOnly}` → `201 {key, secret, endpoint, url}` (el secreto se muestra **una sola vez**)
+- `DELETE /inbox/mcp-keys/{keyId}?accountId&inboxId` → revoca la llave
+
+### Opciones de la conexión
+
+| Opción | Por defecto | Qué hace |
+|---|---|---|
+| Grabar llamadas | sí | Graba las llamadas y las deja como nota privada en Chatwoot. |
+| Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 como notas privadas, sin reenviar nada. **Solo funciona si está activa al vincular** el número; puede crear muchas conversaciones de golpe. |
+| Mostrar mensajes enviados por API | no | Lo que se envía por la API de AstraCalls (ej. n8n) aparece como nota privada en la conversación. |
+
+### Conectar una IA (MCP)
+
+Cada bandeja puede generar **llaves MCP** de AstraCalls. Una llave da acceso **solo a ese número** (leer y enviar mensajes,
+contactos, llamadas) y no permite desconectarlo, re-vincularlo ni cambiar su configuración. Puede ser de **solo lectura**.
+La IA se conecta a `https://<ASTRACALLS_PUBLIC_URL>/mcp/<llave>`, o al servidor `.../mcp` con `Authorization: Bearer <llave>`.
+
 Seguridad: el usuario debe ser `administrator` de `accountId` (se revalida en cada consulta, con caché de 15 s); una solicitud solo la puede ver quien la creó;
 teléfono validado (8–15 dígitos, código de país); nombre saneado; rate limit por IP y por cuenta; timeouts en todas las llamadas; sin tokens en logs; estado solo en memoria.
+Para bandejas ya conectadas, la sesión se deduce del webhook de la bandeja **y se verifica** que la configuración de esa sesión en AstraCalls
+sea de la misma cuenta, la misma bandeja y el mismo Chatwoot: apuntar el webhook de una bandeja propia a la sesión de otro cliente no da acceso a nada.
 
 ## Pruebas
 
 ```powershell
 cd server
 npm install
-npm test        # 32 pruebas (incluye cupos): flujo feliz (QR y código), 403 no-admin, rollback en cada paso, cancelar, expiración,
+npm test        # 43 pruebas (cupos, opciones de bandeja, MCP y seguridad): flujo feliz (QR y código), 403 no-admin, rollback en cada paso, cancelar, expiración,
                 # CORS, rate limit, ausencia de secretos en logs, SSE, decodificación del QR, inyección en el DOM
 ```
 

@@ -284,6 +284,21 @@
     '.astra-md .astra-wait{display:flex;align-items:center;gap:8px;color:var(--a-mut);margin-top:12px}',
     '.astra-md .astra-sp{width:14px;height:14px;border-radius:50%;border:2px solid var(--a-bd);border-top-color:var(--a-ac);animation:astra-spin .8s linear infinite}',
     '.astra-md .astra-ok{font-size:44px;text-align:center;margin:4px 0}',
+    '.astra-md select{padding:4px 8px;border-radius:6px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:13px}',
+    '.astra-md .astra-ind{margin-left:24px;margin-top:2px}',
+    '.astra-md.astra-inline{max-width:56rem;width:auto;max-height:none;overflow:visible;box-shadow:none;margin:0 24px 24px}',
+    '.astra-md h3{margin:22px 0 4px;font-size:15px;font-weight:600;color:var(--a-fg)}',
+    '.astra-md .astra-pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;margin-left:10px;vertical-align:middle;background:var(--a-soft)}',
+    '.astra-md .astra-on-t{color:#30a46c}.astra-md .astra-off-t{color:var(--a-err)}',
+    '.astra-md .astra-saved{font-size:12px;color:var(--a-mut);margin-top:8px;min-height:16px}',
+    '.astra-md .astra-inrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}',
+    '.astra-md .astra-inrow input[type=text]{flex:1;min-width:180px;width:auto}',
+    '.astra-md table.astra-keys{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}',
+    '.astra-md table.astra-keys th,.astra-md table.astra-keys td{padding:7px 8px;border-top:1px solid var(--a-bd);text-align:left;color:var(--a-fg)}',
+    '.astra-md table.astra-keys th{color:var(--a-mut);font-weight:500}',
+    '.astra-md .astra-secret{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;background:var(--a-soft);color:var(--a-fg);padding:10px 12px;border-radius:8px;margin-top:8px;user-select:all}',
+    '.astra-md .astra-warn{border:1px solid var(--a-ac);border-radius:10px;padding:12px;margin-top:12px}',
+    '.astra-md code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--a-soft);padding:1px 5px;border-radius:4px}',
     '@keyframes astra-spin{to{transform:rotate(360deg)}}'
   ].join('');
 
@@ -329,7 +344,7 @@
     return fetch(PROV + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined, credentials: 'omit' })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) {
-          if (!r.ok) throw Object.assign(new Error(j.error || 'Ocurrió un error inesperado.'), { status: r.status });
+          if (!r.ok) throw Object.assign(new Error(j.error || 'Ocurrió un error inesperado.'), { status: r.status, code: j.code });
           return j;
         });
       }, function () { throw Object.assign(new Error('No se pudo conectar con el servicio de conexión. Revisa tu internet e inténtalo de nuevo.'), { status: 0 }); });
@@ -371,6 +386,13 @@
     var phone = el('input', { type: 'tel', value: prev.phone || '', id: 'astra-phone', placeholder: 'Ej. 5215512345678', autocomplete: 'off', inputmode: 'tel' });
     var rec = el('input', { type: 'checkbox', id: 'astra-rec' });
     rec.checked = prev.record !== false;
+    var mirror = el('input', { type: 'checkbox', id: 'astra-mirror' });
+    mirror.checked = prev.mirrorApi === true;
+    var hist = el('input', { type: 'checkbox', id: 'astra-hist' });
+    hist.checked = prev.importHistory === true;
+    var histDays = daysSelect('astra-hist-days', prev.importHistoryDays || 30);
+    histDays.disabled = !hist.checked;
+    hist.addEventListener('change', function () { histDays.disabled = !hist.checked; });
     var err = el('div', { class: 'astra-err', style: 'display:none' });
     var optQr = el('label', { class: 'astra-opt' }), optCode = el('label', { class: 'astra-opt' });
     var rQr = el('input', { type: 'radio', name: 'astra-m', value: 'qr' }), rCode = el('input', { type: 'radio', name: 'astra-m', value: 'code' });
@@ -394,7 +416,10 @@
       else if (p && (digits.length < 8 || digits.length > 15 || !/^\+?[\d\s\-()]+$/.test(p))) msg = 'El número no es válido: usa solo dígitos con código de país (ej. 5215512345678).';
       else if (method === 'code' && !digits) msg = 'Para el código de 8 caracteres necesitas escribir tu número con código de país.';
       if (msg) { err.textContent = msg; err.style.display = ''; return; }
-      start({ name: n, phone: digits, record: rec.checked, method: method });
+      start({
+        name: n, phone: digits, record: rec.checked, method: method,
+        mirrorApi: mirror.checked, importHistory: hist.checked, importHistoryDays: Number(histDays.value)
+      });
     });
 
     setBox([
@@ -404,6 +429,10 @@
       el('label', { class: 'astra-l', for: 'astra-phone', text: 'Número de WhatsApp (con código de país)' }), phone,
       el('div', { class: 'astra-h', text: 'Solo dígitos, sin espacios. Ej.: 5215512345678' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
+      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
+      el('div', { class: 'astra-h astra-ind', text: 'Llegan como notas privadas, sin reenviar nada a tus contactos. Puede crear muchas conversaciones de golpe.' }),
+      el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
+      el('div', { class: 'astra-h astra-ind', text: 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones.' }),
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
       el('div', { class: 'astra-row' }, [cancel, go])
@@ -429,7 +458,10 @@
 
   function start(form) {
     renderLoading('Creando la conexión…');
-    api('POST', '/provision', { accountId: modal.accountId, inboxName: form.name, phone: form.phone, record: form.record, method: form.method })
+    api('POST', '/provision', {
+      accountId: modal.accountId, inboxName: form.name, phone: form.phone, record: form.record, method: form.method,
+      mirrorApi: !!form.mirrorApi, importHistory: !!form.importHistory, importHistoryDays: form.importHistoryDays || 30
+    })
       .then(function (r) {
         if (!modal || modal.stopped) {
           // el usuario cerró mientras se creaba: revertir
@@ -560,7 +592,211 @@
     return card;
   }
 
+  // ======================================================================
+  //  Configuración de una bandeja ya conectada (Ajustes de la bandeja)
+  // ======================================================================
+  var INBOX_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/(\d+)\/?$/;
+  var INBOX_ATTR = 'data-astra-inbox';
+  var inboxState = { key: '', status: '', data: null };
+
+  function daysSelect(id, value) {
+    var s = el('select', { id: id, 'aria-label': 'Días de historial' });
+    [7, 30, 90].forEach(function (d) {
+      var o = el('option', { value: String(d), text: d + ' días' });
+      if (Number(value) === d) o.selected = true;
+      s.appendChild(o);
+    });
+    return s;
+  }
+
+  function copyText(text, btn) {
+    var done = function () { var t = btn.textContent; btn.textContent = '¡Copiado!'; setTimeout(function () { btn.textContent = t; }, 1500); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () {}); return; }
+    } catch (e) { /* fallback abajo */ }
+    var ta = el('textarea', { style: 'position:fixed;opacity:0' });
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* noop */ }
+    document.body.removeChild(ta);
+  }
+
+  function fmtDate(v) {
+    if (!v) return '—';
+    try { return new Date(v).toLocaleString(); } catch (e) { return String(v); }
+  }
+
+  function findWebhookInput() {
+    var inputs = document.querySelectorAll('input');
+    for (var i = 0; i < inputs.length; i++) {
+      if (String(inputs[i].value || '').indexOf('/chatwoot/webhook') !== -1) return inputs[i];
+    }
+    return null;
+  }
+
+  function buildInboxCard(accountId, inboxId, data) {
+    var card = el('div', { class: 'astra-md astra-inline' + (isDark() ? ' astra-dark' : '') });
+    card.setAttribute(INBOX_ATTR, accountId + '/' + inboxId);
+    var q = '?accountId=' + accountId + '&inboxId=' + inboxId;
+
+    // ---- opciones ----
+    var pill = el('span', {
+      class: 'astra-pill ' + (data.connected ? 'astra-on-t' : 'astra-off-t'),
+      text: data.connected ? 'Conectado' + (data.phone ? ' · +' + data.phone : '') : 'Desconectado'
+    });
+    var rec = el('input', { type: 'checkbox' }); rec.checked = !!data.recording;
+    var mirror = el('input', { type: 'checkbox' }); mirror.checked = !!data.mirrorApi;
+    var hist = el('input', { type: 'checkbox' }); hist.checked = !!data.importHistory;
+    var days = daysSelect('astra-inbox-days', data.importHistoryDays || 30);
+    var saved = el('div', { class: 'astra-saved' });
+    var inputs = [rec, mirror, hist, days];
+
+    function save(patch, revert) {
+      inputs.forEach(function (n) { n.disabled = true; });
+      saved.className = 'astra-saved'; saved.textContent = 'Guardando…';
+      patch.accountId = accountId; patch.inboxId = inboxId;
+      api('PUT', '/inbox/settings', patch).then(function (d) {
+        data = d; inboxState.data = d;
+        saved.textContent = 'Guardado ✓';
+      }, function (e) {
+        revert();
+        saved.className = 'astra-saved astra-err'; saved.textContent = e.message;
+      }).then(function () { inputs.forEach(function (n) { n.disabled = false; }); });
+    }
+    rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
+    mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
+    hist.addEventListener('change', function () {
+      save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
+    });
+    var prevDays = days.value;
+    days.addEventListener('change', function () {
+      var nv = days.value;
+      save({ importHistoryDays: Number(nv) }, function () { days.value = prevDays; });
+      prevDays = nv;
+    });
+
+    // ---- MCP ----
+    var keysBox = el('div');
+    var created = el('div');
+    var keyName = el('input', { type: 'text', maxlength: '60', placeholder: 'Nombre de la llave (ej. Asistente de ventas)' });
+    var ro = el('input', { type: 'checkbox' });
+    var mcpErr = el('div', { class: 'astra-err', style: 'display:none' });
+    var createBtn = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Crear llave' });
+
+    function loadKeys() {
+      keysBox.textContent = '';
+      keysBox.appendChild(el('div', { class: 'astra-wait' }, [el('span', { class: 'astra-sp' }), 'Cargando llaves…']));
+      api('GET', '/inbox/mcp-keys' + q).then(function (r) {
+        keysBox.textContent = '';
+        if (!r.keys.length) { keysBox.appendChild(el('p', { text: 'Todavía no hay llaves para esta bandeja.', style: 'margin-top:10px' })); return; }
+        var tb = el('tbody');
+        r.keys.forEach(function (k) {
+          var rm = el('button', { class: 'astra-b', type: 'button', text: 'Revocar' });
+          rm.addEventListener('click', function () {
+            if (!window.confirm('¿Revocar la llave "' + (k.name || k.prefix) + '"? La IA que la use dejará de funcionar.')) return;
+            rm.disabled = true;
+            api('DELETE', '/inbox/mcp-keys/' + encodeURIComponent(k.id) + q).then(loadKeys, function (e) {
+              rm.disabled = false; mcpErr.textContent = e.message; mcpErr.style.display = '';
+            });
+          });
+          tb.appendChild(el('tr', null, [
+            el('td', { text: k.name || '—' }),
+            el('td', null, [el('code', { text: (k.prefix || '') + '…' })]),
+            el('td', { text: k.readOnly ? 'Solo lectura' : 'Lectura y envío' }),
+            el('td', { text: fmtDate(k.lastUsedAt) }),
+            el('td', { style: 'text-align:right' }, [rm])
+          ]));
+        });
+        keysBox.appendChild(el('table', { class: 'astra-keys' }, [
+          el('thead', null, [el('tr', null, [el('th', { text: 'Nombre' }), el('th', { text: 'Llave' }), el('th', { text: 'Permiso' }), el('th', { text: 'Último uso' }), el('th')])]),
+          tb
+        ]));
+      }, function (e) {
+        keysBox.textContent = '';
+        keysBox.appendChild(el('div', { class: 'astra-err', text: e.message }));
+      });
+    }
+
+    createBtn.addEventListener('click', function () {
+      mcpErr.style.display = 'none';
+      createBtn.disabled = true;
+      api('POST', '/inbox/mcp-keys', { accountId: accountId, inboxId: inboxId, name: keyName.value.trim(), readOnly: ro.checked })
+        .then(function (r) {
+          keyName.value = ''; ro.checked = false;
+          var cUrl = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Copiar URL' });
+          var cKey = el('button', { class: 'astra-b', type: 'button', text: 'Copiar solo la llave' });
+          var hide = el('button', { class: 'astra-b', type: 'button', text: 'Ya la guardé' });
+          cUrl.addEventListener('click', function () { copyText(r.url, cUrl); });
+          cKey.addEventListener('click', function () { copyText(r.secret, cKey); });
+          hide.addEventListener('click', function () { created.textContent = ''; });
+          created.textContent = '';
+          created.appendChild(el('div', { class: 'astra-warn' }, [
+            el('strong', { text: 'Llave creada. Cópiala ahora: no se volverá a mostrar.' }),
+            el('div', { class: 'astra-secret', text: r.url }),
+            el('div', { class: 'astra-h', text: 'Si tu IA pide servidor y llave por separado: servidor ' + r.endpoint + ' con el encabezado "Authorization: Bearer <llave>".' }),
+            el('div', { class: 'astra-inrow' }, [cUrl, cKey, hide])
+          ]));
+          loadKeys();
+        }, function (e) { mcpErr.textContent = e.message; mcpErr.style.display = ''; })
+        .then(function () { createBtn.disabled = false; });
+    });
+
+    [
+      el('h2', null, ['WhatsApp + Llamadas', pill]),
+      el('p', { text: 'Opciones de esta bandeja en AstraCalls. Los cambios se guardan al instante.' }),
+      el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
+      el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
+      el('div', { class: 'astra-h astra-ind', text: 'Aparecen como notas privadas para que tu equipo vea lo que envían tus automatizaciones.' }),
+      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),
+      el('div', { class: 'astra-h astra-ind', text: 'Solo aplica la próxima vez que se vincule el número (WhatsApp envía el historial al vincular).' }),
+      saved,
+      el('h3', { text: 'Conectar tu IA (MCP)' }),
+      el('p', { text: 'Crea una llave para que un asistente de IA (Claude, ChatGPT, n8n…) use este número: leer y enviar mensajes, ver contactos y hacer llamadas. Cada llave solo da acceso a este número y no permite desconectarlo ni cambiar su configuración.' }),
+      el('div', { class: 'astra-h', text: 'Servidor MCP: ' + (data.mcpEndpoint || '') }),
+      el('div', { class: 'astra-inrow' }, [keyName, el('label', { class: 'astra-ck', style: 'margin-top:0' }, [ro, 'Solo lectura']), createBtn]),
+      mcpErr,
+      created,
+      keysBox
+    ].forEach(function (n) { card.appendChild(n); });
+    loadKeys();
+    return card;
+  }
+
+  function removeInboxCards() {
+    Array.prototype.slice.call(document.querySelectorAll('[' + INBOX_ATTR + ']')).forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+  }
+
+  function tryInjectInbox() {
+    var m = location.pathname.match(INBOX_RE);
+    if (!m) { removeInboxCards(); inboxState = { key: '', status: '', data: null }; return; }
+    var accountId = Number(m[1]), inboxId = Number(m[2]), key = accountId + '/' + inboxId;
+    var hook = findWebhookInput(); // solo existe en la pestaña "Ajustes" de una bandeja API
+    if (!hook) { removeInboxCards(); return; }
+    if (inboxState.key !== key) {
+      inboxState = { key: key, status: 'loading', data: null };
+      api('GET', '/inbox/settings?accountId=' + accountId + '&inboxId=' + inboxId).then(function (d) {
+        if (inboxState.key !== key) return;
+        inboxState.status = d && d.managed ? 'managed' : 'unmanaged';
+        inboxState.data = d;
+        schedule();
+      }, function () {
+        if (inboxState.key !== key) return;
+        inboxState.status = 'unmanaged'; // 404, sin sesión o error: no mostrar nada
+      });
+      return;
+    }
+    if (inboxState.status !== 'managed') return;
+    var existing = document.querySelector('[' + INBOX_ATTR + ']');
+    if (existing && existing.getAttribute(INBOX_ATTR) === key && document.body.contains(existing)) return;
+    removeInboxCards();
+    var section = hook.closest('section');
+    var target = section && (section.querySelector('.max-w-7xl') || section.firstElementChild);
+    if (!target) return;
+    ensureStyle();
+    target.insertBefore(buildInboxCard(accountId, inboxId, inboxState.data), target.firstChild);
+  }
+
   function tryInject() {
+    try { tryInjectInbox(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
     try {
       var m = location.pathname.match(PATH_RE);
       if (!m) return;
@@ -596,7 +832,12 @@
 
   function boot() {
     try {
-      new MutationObserver(function () { try { if (PATH_RE.test(window.location.pathname)) schedule(); } catch (e) { /* ventana cerrada */ } })
+      new MutationObserver(function () {
+        try {
+          var p = window.location.pathname;
+          if (PATH_RE.test(p) || INBOX_RE.test(p) || document.querySelector('[' + INBOX_ATTR + ']')) schedule();
+        } catch (e) { /* ventana cerrada */ }
+      })
         .observe(document.body, { childList: true, subtree: true });
     } catch (e) { /* noop */ }
     schedule();

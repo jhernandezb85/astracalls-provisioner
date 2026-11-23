@@ -57,6 +57,14 @@ class ChatwootClient {
     return Array.isArray(r.data.payload) ? r.data.payload : (Array.isArray(r.data) ? r.data : []);
   }
 
+  /** GET /api/v1/accounts/{id}/inboxes/{inboxId} → bandeja (incluye webhook_url en canal API); null si no existe. */
+  async getInbox(accountId, accessToken, inboxId) {
+    const r = await this._json('GET', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
+    if (r.status === 404) return null;
+    if (!r.ok || !r.data) throw new HttpError(502, 'No se pudo consultar la bandeja en Chatwoot.', 'inbox_get_failed');
+    return r.data;
+  }
+
   async deleteInbox(accountId, accessToken, inboxId) {
     const r = await this._json('DELETE', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
     return r.ok || r.status === 404;

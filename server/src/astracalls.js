@@ -81,6 +81,39 @@ class AstraCallsClient {
     return String(r.data.code);
   }
 
+  /** GET /api/sessions/{sid}/chatwoot → config (sin token); null si la sesión no existe. */
+  async getChatwootCfg(sid) {
+    const r = await this._req('GET', `/api/sessions/${encodeURIComponent(sid)}/chatwoot`, undefined, { allow404: true });
+    if (r.status === 404) return null;
+    return (r.data && r.data.chatwoot) || null;
+  }
+
+  async getRecording(sid) {
+    const r = await this._req('GET', `/api/sessions/${encodeURIComponent(sid)}/recording`);
+    return !!(r.data && r.data.enabled);
+  }
+
+  // ---- llaves MCP por sesión (cmd/server/mcpkeys.go) ----
+  async listMcpKeys(sid) {
+    const r = await this._req('GET', `/api/sessions/${encodeURIComponent(sid)}/mcp-keys`);
+    return { keys: (r.data && r.data.keys) || [], max: (r.data && r.data.max) || 20 };
+  }
+
+  async createMcpKey(sid, name, readOnly) {
+    const r = await this._req('POST', `/api/sessions/${encodeURIComponent(sid)}/mcp-keys`, { name, readOnly: !!readOnly });
+    if (!r.data || !r.data.secret) throw new HttpError(502, 'AstraCalls no devolvió la llave MCP.', 'astracalls_error');
+    return r.data; // {key, secret, endpoint, url}
+  }
+
+  async deleteMcpKey(sid, kid) {
+    const r = await this._req('DELETE', `/api/sessions/${encodeURIComponent(sid)}/mcp-keys/${encodeURIComponent(kid)}`, undefined, { allow404: true });
+    return r.status !== 404;
+  }
+
+  mcpEndpoint() {
+    return `${this.publicUrl}/mcp`;
+  }
+
   async listSessions() {
     const r = await this._req('GET', '/api/sessions');
     return (r.data && r.data.sessions) || [];

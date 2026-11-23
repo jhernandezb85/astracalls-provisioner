@@ -36,6 +36,7 @@ function createApp({ cfg, provisioner, log }) {
   const limAccProvision = makeLimiter(cfg.rateAccountPerMin, 60000);
   const limIpStatus = makeLimiter(cfg.rateIpPerMin * 12, 60000);
   const limIdStatus = makeLimiter(90, 60000);
+  const limIpWrite = makeLimiter(cfg.rateIpPerMin * 2, 60000);
 
   // Cabeceras de seguridad básicas
   app.use((req, res, next) => {
@@ -62,7 +63,7 @@ function createApp({ cfg, provisioner, log }) {
       res.setHeader('Access-Control-Allow-Origin', cfg.allowedOrigin);
       res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Headers', 'content-type, access-token, client, uid');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
       res.setHeader('Access-Control-Max-Age', '600');
     }
     if (req.method === 'OPTIONS') return res.status(204).end();
@@ -84,8 +85,55 @@ function createApp({ cfg, provisioner, log }) {
     if (!limAccProvision(String(b.accountId))) throw new HttpError(429, 'Demasiados intentos para esta cuenta. Espera un minuto.', 'rate_limited');
     const out = await provisioner.provision({
       devise, accountId: b.accountId, inboxName: b.inboxName, phone: b.phone, record: b.record === true, method: b.method,
+      importHistory: b.importHistory === true, importHistoryDays: b.importHistoryDays, mirrorApi: b.mirrorApi === true,
     });
     res.status(201).json(out);
+  }));
+
+  // ---- configuración de una bandeja ya conectada ----
+  const bool = (v) => (typeof v === 'boolean' ? v : undefined);
+  const readLimit = (req) => { if (!limIpStatus(req.ip)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited'); };
+  const writeLimit = (req) => { if (!limIpWrite(req.ip)) throw new HttpError(429, 'Demasiados cambios seguidos. Espera un minuto.', 'rate_limited'); };
+
+  api.get('/inbox/settings', wrap(async (req, res) => {
+    readLimit(req);
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.inboxSettings(devise, req.query.accountId, req.query.inboxId));
+  }));
+
+  api.put('/inbox/settings', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    const b = req.body || {};
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.updateInboxSettings(devise, {
+      accountId: b.accountId, inboxId: b.inboxId,
+      recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
+      importHistoryDays: b.importHistoryDays,
+    }));
+  }));
+
+  // ---- llaves MCP de la bandeja (conectar una IA a ese número) ----
+  api.get('/inbox/mcp-keys', wrap(async (req, res) => {
+    readLimit(req);
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.listMcpKeys(devise, req.query.accountId, req.query.inboxId));
+  }));
+
+  api.post('/inbox/mcp-keys', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    const b = req.body || {};
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(201).json(await provisioner.createMcpKey(devise, { accountId: b.accountId, inboxId: b.inboxId, name: b.name, readOnly: b.readOnly === true }));
+  }));
+
+  api.delete('/inbox/mcp-keys/:kid', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    res.json(await provisioner.deleteMcpKey(devise, { accountId: req.query.accountId, inboxId: req.query.inboxId, keyId: req.params.kid }));
   }));
 
   api.get('/provision/:id/status', wrap(async (req, res) => {
@@ -114,7 +162,7 @@ function createApp({ cfg, provisioner, log }) {
     res.status(500).json({ error: 'Error interno del servidor.', code: 'internal' });
   });
 
-  app.close = () => [limIpProvision, limAccProvision, limIpStatus, limIdStatus].forEach((l) => l.close());
+  app.close = () => [limIpProvision, limAccProvision, limIpStatus, limIdStatus, limIpWrite].forEach((l) => l.close());
   return app;
 }
 

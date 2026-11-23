@@ -54,6 +54,12 @@ async function mockChatwoot(opts = {}) {
       state.inboxes.set(id, body);
       return send(200, { id, name: body.name, inbox_identifier: 'ident-' + id });
     }
+    if (req.method === 'GET' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/inboxes\/(\d+)$/))) {
+      if (req.headers.api_access_token !== USER_TOKEN) return send(401, {});
+      const b = state.inboxes.get(Number(m[2]));
+      if (!b) return send(404, {});
+      return send(200, { id: Number(m[2]), name: b.name, channel_type: 'Channel::Api', webhook_url: b.channel.webhook_url });
+    }
     if (req.method === 'DELETE' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/inboxes\/(\d+)$/))) {
       state.inboxes.delete(Number(m[2]));
       return send(200, {});
@@ -83,7 +89,12 @@ async function mockAstraCalls(opts = {}) {
       const sub = m[2] || '';
       if (req.method === 'DELETE' && !sub) op = 'deleteSession';
       else if (req.method === 'POST' && sub === 'chatwoot') op = 'setChatwoot';
+      else if (req.method === 'GET' && sub === 'chatwoot') op = 'getChatwoot';
       else if (req.method === 'PUT' && sub === 'recording') op = 'setRecording';
+      else if (req.method === 'GET' && sub === 'recording') op = 'getRecording';
+      else if (req.method === 'GET' && sub === 'mcp-keys') op = 'listMcp';
+      else if (req.method === 'POST' && sub === 'mcp-keys') op = 'createMcp';
+      else if (req.method === 'DELETE' && sub.startsWith('mcp-keys/')) op = 'deleteMcp';
       else if (req.method === 'POST' && sub === 'pair') op = 'pair';
       else if (req.method === 'POST' && sub === 'pair-code') op = 'pairCode';
     }
@@ -93,8 +104,35 @@ async function mockAstraCalls(opts = {}) {
     if (op === 'createSession') { const id = 'sess' + state.next++; state.sessions.set(id, { name: body.name }); return send(200, { id }); }
     if (op === 'list') return send(200, { sessions: [...state.sessions].map(([id, s]) => ({ id, name: s.name, state: s.state || 'connecting', paired: !!s.paired, jid: s.jid || '' })) });
     if (op === 'deleteSession') { state.sessions.delete(m[1]); return send(204); }
+    const sess = m && state.sessions.get(m[1]);
+    if (m && !sess && op !== 'deleteSession') return send(404, { error: 'no session' });
     if (op === 'pairCode') return send(200, { code: 'ABCD1234' });
-    if (op === 'setChatwoot') return send(200, { chatwoot: {} });
+    if (op === 'setChatwoot') {
+      // igual que AstraCalls: parte de la config actual y conserva el token si viene vacío
+      const cur = sess.chatwoot || {};
+      const next = { ...cur, ...body };
+      if (!body.account_token) next.account_token = cur.account_token;
+      sess.chatwoot = next;
+      return send(200, { chatwoot: { ...next, account_token: '' } });
+    }
+    if (op === 'getChatwoot') return send(200, { chatwoot: { ...(sess.chatwoot || {}), account_token: '' } });
+    if (op === 'setRecording') { sess.recording = !!(body && body.enabled); return send(200, { enabled: sess.recording }); }
+    if (op === 'getRecording') return send(200, { enabled: !!sess.recording });
+    if (op === 'listMcp') return send(200, { keys: (sess.mcp || []).map(({ secret, ...k }) => k), max: 20, endpoint: 'https://calls.example.com/mcp' });
+    if (op === 'createMcp') {
+      sess.mcp = sess.mcp || [];
+      const id = 'k' + (sess.mcp.length + 1);
+      const secret = 'acmcp_' + 'f'.repeat(56) + id;
+      const key = { id, sessionId: m[1], name: body.name, prefix: secret.slice(0, 12), readOnly: !!body.readOnly, createdAt: '2026-11-23T00:00:00Z' };
+      sess.mcp.push({ ...key, secret });
+      return send(201, { key, secret, endpoint: 'https://calls.example.com/mcp', url: 'https://calls.example.com/mcp/' + secret });
+    }
+    if (op === 'deleteMcp') {
+      const kid = m[2].split('/')[1];
+      const before = (sess.mcp || []).length;
+      sess.mcp = (sess.mcp || []).filter((k) => k.id !== kid);
+      return before === sess.mcp.length ? send(404, { error: 'chave não encontrada' }) : send(200, { deleted: true });
+    }
     if (op === 'setRecording') return send(200, { enabled: !!(body && body.enabled) });
     return send(204);
   });

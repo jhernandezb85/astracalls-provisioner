@@ -135,6 +135,118 @@ test('sin cookie de sesión muestra un error claro y no llama al servicio', asyn
   dom.window.close();
 });
 
+// ---------- configuración de una bandeja ya conectada ----------
+const COOKIE = 'cw_d_session_info=' + encodeURIComponent(JSON.stringify({ 'access-token': 'AT', client: 'CL', uid: 'a@b.c' }));
+const SETTINGS_PAGE = (webhook) => `<div class="grid settings"><header>Prueba</header>
+  <section class="w-full overflow-auto py-8"><div class="max-w-7xl mx-auto w-full">
+    <div class="flex mx-6"><label>URL de Webhook</label><input id="wh" value="${webhook}"></div>
+  </div></section></div>`;
+
+function mockApi(dom, routes) {
+  const calls = [];
+  dom.window.fetch = (url, opts) => {
+    const u = new URL(url);
+    const key = opts.method + ' ' + u.pathname;
+    calls.push({ key, url, body: opts.body ? JSON.parse(opts.body) : undefined, headers: opts.headers });
+    const h = routes[key];
+    const [status, json] = h ? h(u, opts) : [404, { error: 'no' }];
+    return Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(json) });
+  };
+  return calls;
+}
+
+const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
+
+test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', SETTINGS_PAGE('https://calls.example.com/api/sessions/abc/chatwoot/webhook'), COOKIE);
+  let keys = [];
+  const calls = mockApi(dom, {
+    'GET /inbox/settings': () => [200, MANAGED],
+    'PUT /inbox/settings': (u, o) => [200, { ...MANAGED, ...JSON.parse(o.body) }],
+    'GET /inbox/mcp-keys': () => [200, { endpoint: 'https://calls.example.com/mcp', max: 20, keys }],
+    'POST /inbox/mcp-keys': (u, o) => {
+      const b = JSON.parse(o.body);
+      keys = [{ id: 'k1', name: b.name, prefix: 'acmcp_abc123', readOnly: b.readOnly, createdAt: '2026-11-23T00:00:00Z' }];
+      return [201, { key: keys[0], secret: 'acmcp_SECRETO', endpoint: 'https://calls.example.com/mcp', url: 'https://calls.example.com/mcp/acmcp_SECRETO' }];
+    },
+    'DELETE /inbox/mcp-keys/k1': () => { keys = []; return [200, { deleted: true }]; },
+  });
+  dom.window.confirm = () => true;
+  const d = dom.window.document;
+  // dispara el observador
+  d.body.appendChild(d.createElement('i'));
+  await tick(150);
+
+  const card = d.querySelector('[data-astra-inbox="1/38"]');
+  assert.ok(card, 'tarjeta insertada');
+  assert.equal(d.querySelector('.max-w-7xl').firstElementChild, card, 'arriba de los ajustes');
+  assert.match(card.textContent, /Conectado · \+5358310867/);
+  assert.match(card.textContent, /Conectar tu IA \(MCP\)/);
+  assert.match(card.textContent, /Todavía no hay llaves/);
+  assert.equal(calls.find((c) => c.key === 'GET /inbox/settings').url, 'https://prov.example.com/inbox/settings?accountId=1&inboxId=38');
+
+  // guardar una opción
+  const boxes = card.querySelectorAll('input[type=checkbox]');
+  boxes[1].checked = true; boxes[1].dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  const put = calls.find((c) => c.key === 'PUT /inbox/settings');
+  assert.deepEqual(put.body, { mirrorApi: true, accountId: 1, inboxId: 38 });
+  assert.match(card.textContent, /Guardado ✓/);
+
+  // crear llave MCP
+  card.querySelector('input[type=text]').value = 'Mi bot';
+  [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave').click();
+  await tick(120);
+  assert.deepEqual(calls.find((c) => c.key === 'POST /inbox/mcp-keys').body, { accountId: 1, inboxId: 38, name: 'Mi bot', readOnly: false });
+  assert.equal(card.querySelector('.astra-secret').textContent, 'https://calls.example.com/mcp/acmcp_SECRETO');
+  assert.match(card.textContent, /no se volverá a mostrar/);
+  assert.match(card.querySelector('table.astra-keys').textContent, /Mi bot/);
+
+  // revocar
+  [...card.querySelectorAll('button')].find((b) => b.textContent === 'Revocar').click();
+  await tick(120);
+  assert.ok(calls.some((c) => c.key === 'DELETE /inbox/mcp-keys/k1' && c.url.endsWith('?accountId=1&inboxId=38')));
+  assert.match(card.textContent, /Todavía no hay llaves/);
+  dom.window.close();
+});
+
+test('ajustes de bandeja: no hace nada si la bandeja no es de AstraCalls o en otra pestaña', async () => {
+  const notManaged = boot('https://crm.example.com/app/accounts/1/settings/inboxes/5', SETTINGS_PAGE('https://otro.example.com/hook/chatwoot/webhook'), COOKIE);
+  mockApi(notManaged, { 'GET /inbox/settings': () => [404, { error: 'Esta bandeja no está conectada', code: 'not_managed' }] });
+  notManaged.window.document.body.appendChild(notManaged.window.document.createElement('i'));
+  await tick(120);
+  assert.equal(notManaged.window.document.querySelector('[data-astra-inbox]'), null);
+  notManaged.window.close();
+
+  const otherTab = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', '<section><div class="max-w-7xl"><p>Colaboradores</p></div></section>', COOKIE);
+  const calls = mockApi(otherTab, { 'GET /inbox/settings': () => [200, MANAGED] });
+  otherTab.window.document.body.appendChild(otherTab.window.document.createElement('i'));
+  await tick(120);
+  assert.equal(otherTab.window.document.querySelector('[data-astra-inbox]'), null);
+  assert.equal(calls.length, 0, 'ni siquiera consulta');
+  otherTab.window.close();
+});
+
+test('el modal envía historial y espejo de API', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, COOKIE);
+  await tick();
+  const calls = mockApi(dom, { 'POST /provision': () => [500, { error: 'x' }] });
+  const d = dom.window.document;
+  d.querySelector('[data-astra-card]').click();
+  d.getElementById('astra-phone').value = '5215512345678';
+  d.getElementById('astra-hist').checked = true;
+  d.getElementById('astra-hist').dispatchEvent(new dom.window.Event('change'));
+  d.getElementById('astra-hist-days').value = '90';
+  d.getElementById('astra-mirror').checked = true;
+  [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Conectar').click();
+  await tick(80);
+  const b = calls[0].body;
+  assert.equal(b.importHistory, true);
+  assert.equal(b.importHistoryDays, 90);
+  assert.equal(b.mirrorApi, true);
+  dom.window.close();
+});
+
 test('flujo completo con cookie devise: envía headers, muestra QR y luego ¡Listo!', async () => {
   const cookie = 'cw_d_session_info=' + encodeURIComponent(JSON.stringify({ 'access-token': 'AT', client: 'CL', uid: 'a@b.c', expiry: '1' }));
   const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, cookie);
@@ -161,7 +273,10 @@ test('flujo completo con cookie devise: envía headers, muestra QR y luego ¡Lis
   assert.equal(seen[0].headers.client, 'CL');
   assert.equal(seen[0].headers.uid, 'a@b.c');
   const body = JSON.parse(seen[0].body);
-  assert.deepEqual(body, { accountId: 7, inboxName: 'Ventas', phone: '525512345678', record: true, method: 'qr' });
+  assert.deepEqual(body, {
+    accountId: 7, inboxName: 'Ventas', phone: '525512345678', record: true, method: 'qr',
+    mirrorApi: false, importHistory: false, importHistoryDays: 30,
+  });
   assert.ok(d.querySelector('.astra-qr svg'), 'QR renderizado');
   assert.match(d.querySelector('.astra-md').textContent, /Dispositivos vinculados/);
   // nunca se muestran las llaves

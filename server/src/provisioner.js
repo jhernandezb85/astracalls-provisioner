@@ -2,6 +2,16 @@
 
 const { HttpError, normalizePhone, sanitizeInboxName, sha256, newId } = require('./util');
 
+/** Días de historial permitidos en la UI: 7, 30 o 90 (por defecto 30). */
+function clampDays(v) {
+  const n = Number(v);
+  return [7, 30, 90].includes(n) ? n : 30;
+}
+
+function hostOf(u) {
+  try { return new URL(String(u)).host.toLowerCase(); } catch { return ''; }
+}
+
 const PROFILE_CACHE_MS = 15000;
 const REPAIR_MIN_INTERVAL_MS = 20000;
 const QR_GRACE_MS = 8000;
@@ -53,7 +63,8 @@ class Provisioner {
 
   // ---------- aprovisionar ----------
 
-  async provision({ devise, accountId, inboxName, phone, record, method }) {
+  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi }) {
+    const histDays = clampDays(importHistoryDays);
     const acct = Number(accountId);
     if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
     const name = sanitizeInboxName(inboxName);
@@ -110,8 +121,10 @@ class Provisioner {
         account_token: token,
         inbox_id: inbox.id,
         inbox_identifier: inbox.identifier,
-        import_history: false,
-        import_history_days: 30,
+        // el historial solo llega al vincular: hay que activarlo ANTES del emparejamiento
+        import_history: !!importHistory,
+        import_history_days: histDays,
+        mirror_api: !!mirrorApi,
       });
       // 5) Grabación
       if (record) await this.ac.setRecording(created.sid, true);
@@ -145,6 +158,114 @@ class Provisioner {
       try { await this.ac.deleteSession(created.sid); } catch { ok = false; }
     }
     return ok;
+  }
+
+  // ---------- bandejas ya conectadas (configuración y MCP) ----------
+
+  /**
+   * Resuelve la sesión de AstraCalls de una bandeja, verificando que:
+   *  - el usuario es administrador de la cuenta,
+   *  - el webhook de la bandeja apunta a una sesión de ESTE AstraCalls,
+   *  - y esa sesión está configurada para ESA cuenta, ESA bandeja y ESTE Chatwoot
+   *    (evita que alguien apunte su bandeja a la sesión de otro cliente).
+   * Devuelve { sid } o lanza 404 si la bandeja no es de WhatsApp + Llamadas.
+   */
+  async _resolveInbox(devise, accountId, inboxId) {
+    const acct = Number(accountId);
+    const inbox = Number(inboxId);
+    if (!Number.isInteger(acct) || acct <= 0 || !Number.isInteger(inbox) || inbox <= 0) {
+      throw new HttpError(400, 'Cuenta o bandeja no válida.', 'bad_request');
+    }
+    const profile = await this._profile(devise);
+    this._requireAdmin(profile, acct);
+    const token = profile.access_token;
+    if (!token) throw new HttpError(409, 'Tu usuario no tiene token de API disponible. Pide que se habilite "API y webhooks" en la cuenta.', 'no_api_token');
+
+    const notManaged = () => new HttpError(404, 'Esta bandeja no está conectada a WhatsApp + Llamadas.', 'not_managed');
+    const data = await this.cw.getInbox(acct, token, inbox);
+    const webhook = data && typeof data.webhook_url === 'string' ? data.webhook_url : '';
+    const prefix = this.ac.publicUrl + '/api/sessions/';
+    if (!webhook.startsWith(prefix)) throw notManaged();
+    const m = webhook.slice(prefix.length).match(/^([A-Za-z0-9_-]{1,64})\/chatwoot\/webhook$/);
+    if (!m) throw notManaged();
+    const sid = m[1];
+    const cfg = await this.ac.getChatwootCfg(sid);
+    const sameChatwoot = cfg && hostOf(cfg.url) === hostOf(this.cfg.chatwootUrl);
+    if (!cfg || !sameChatwoot || Number(cfg.account_id) !== acct || Number(cfg.inbox_id) !== inbox) {
+      this.log.warn('bandeja con webhook a una sesión que no le corresponde', { accountId: acct, inboxId: inbox });
+      throw notManaged();
+    }
+    return { sid, cfg, acct, inbox };
+  }
+
+  async inboxSettings(devise, accountId, inboxId) {
+    const { sid, cfg } = await this._resolveInbox(devise, accountId, inboxId);
+    return this._settingsView(sid, cfg);
+  }
+
+  async _settingsView(sid, cfg) {
+    const [recording, sessions] = await Promise.all([
+      this.ac.getRecording(sid),
+      this.ac.listSessions().catch(() => []),
+    ]);
+    const s = sessions.find((x) => x.id === sid) || {};
+    return {
+      managed: true,
+      connected: !!s.paired && (s.state === 'open' || s.state === undefined),
+      phone: String(s.jid || s.lastJid || '').split(/[:@]/)[0] || '',
+      recording,
+      mirrorApi: !!cfg.mirror_api,
+      importHistory: !!cfg.import_history,
+      importHistoryDays: clampDays(cfg.import_history_days),
+      mcpEndpoint: this.ac.mcpEndpoint(),
+    };
+  }
+
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, importHistory, importHistoryDays }) {
+    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    if (typeof recording === 'boolean') await this.ac.setRecording(sid, recording);
+    const patch = {};
+    if (typeof mirrorApi === 'boolean') patch.mirror_api = mirrorApi;
+    if (typeof importHistory === 'boolean') patch.import_history = importHistory;
+    if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);
+    // AstraCalls conserva lo que no viene en el payload (y el token si va vacío)
+    if (Object.keys(patch).length) await this.ac.setChatwoot(sid, patch);
+    this.log.info('configuración de bandeja actualizada', { accountId: Number(accountId), inboxId: Number(inboxId), fields: Object.keys(patch).concat(typeof recording === 'boolean' ? ['recording'] : []) });
+    const cfg = await this.ac.getChatwootCfg(sid);
+    return this._settingsView(sid, cfg || {});
+  }
+
+  async listMcpKeys(devise, accountId, inboxId) {
+    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    const { keys, max } = await this.ac.listMcpKeys(sid);
+    return {
+      endpoint: this.ac.mcpEndpoint(),
+      max,
+      keys: keys.map((k) => ({ id: k.id, name: k.name, prefix: k.prefix, readOnly: !!k.readOnly, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt || null })),
+    };
+  }
+
+  async createMcpKey(devise, { accountId, inboxId, name, readOnly }) {
+    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    const clean = sanitizeInboxName(name) || 'Mi IA';
+    const r = await this.ac.createMcpKey(sid, clean, !!readOnly);
+    const endpoint = this.ac.mcpEndpoint();
+    this.log.info('llave MCP creada', { accountId: Number(accountId), inboxId: Number(inboxId), readOnly: !!readOnly });
+    return {
+      key: { id: r.key && r.key.id, name: clean, prefix: r.key && r.key.prefix, readOnly: !!readOnly },
+      secret: r.secret, // se muestra una sola vez; nunca se registra
+      endpoint,
+      url: `${endpoint}/${r.secret}`,
+    };
+  }
+
+  async deleteMcpKey(devise, { accountId, inboxId, keyId }) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(keyId || ''))) throw new HttpError(400, 'Llave no válida.', 'bad_request');
+    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    const ok = await this.ac.deleteMcpKey(sid, keyId);
+    if (!ok) throw new HttpError(404, 'La llave no existe o ya fue revocada.', 'not_found');
+    this.log.info('llave MCP revocada', { accountId: Number(accountId), inboxId: Number(inboxId) });
+    return { deleted: true };
   }
 
   // ---------- estado ----------
