@@ -65,6 +65,32 @@ class ChatwootClient {
     return r.data;
   }
 
+  /**
+   * Devuelve el token del Agent Bot de la cuenta con ese nombre, creándolo si no
+   * existe. Lo usa AstraCalls para publicar lo que se escribe desde el celular
+   * (Chatwoot no lo cuenta como respuesta humana). null si no se pudo.
+   */
+  async ensureAgentBot(accountId, accessToken, { name, description }) {
+    const h = { api_access_token: accessToken };
+    const tokenOf = (b) => {
+      const t = b && b.access_token;
+      return (t && typeof t === 'object' ? t.token : t) || '';
+    };
+    const list = await this._json('GET', `/api/v1/accounts/${accountId}/agent_bots`, h);
+    const bots = list.ok && Array.isArray(list.data) ? list.data : [];
+    let bot = bots.find((b) => b && b.name === name && Number(b.account_id) === Number(accountId) && !b.system_bot);
+    if (!bot) {
+      const r = await this._json('POST', `/api/v1/accounts/${accountId}/agent_bots`, h, { name, description });
+      if (!r.ok || !r.data || !r.data.id) return null;
+      bot = r.data;
+    }
+    if (!tokenOf(bot)) {
+      const r = await this._json('GET', `/api/v1/accounts/${accountId}/agent_bots/${bot.id}`, h);
+      if (r.ok && r.data) bot = r.data;
+    }
+    return tokenOf(bot) || null;
+  }
+
   async deleteInbox(accountId, accessToken, inboxId) {
     const r = await this._json('DELETE', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
     return r.ok || r.status === 404;

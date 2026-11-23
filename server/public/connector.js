@@ -256,7 +256,16 @@
   var PATH_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/new\/?$/;
   var POLL_MS = 2000;
   var CARD_ATTR = 'data-astra-card';
-  var MIRROR_HINT = 'Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
+  var DEVICE_BOT_LABEL = 'WhatsApp (celular)';
+  var DEVICE_MODES = [
+    { value: 'open', label: 'Como mensaje, y la conversación se abre (recomendado)',
+      hint: 'Aparece como mensaje de "' + DEVICE_BOT_LABEL + '". Si Captain estaba atendiendo, la conversación pasa a abierta y Captain deja de responder: ahora la atiende una persona.' },
+    { value: 'keep', label: 'Como mensaje, sin cambiar el estado',
+      hint: 'Aparece como mensaje, pero la conversación sigue como estaba. Si Captain estaba atendiendo, seguirá respondiendo aunque tú ya hayas escrito; ábrela a mano para tomar el control.' },
+    { value: 'note', label: 'Como nota privada',
+      hint: 'Solo la ve tu equipo (nota amarilla). La conversación sigue como estaba y Captain sigue respondiendo.' }
+  ];
+  var MIRROR_HINT ='Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
     '.astra-ov{position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:inherit}',
@@ -287,6 +296,8 @@
     '.astra-md .astra-ok{font-size:44px;text-align:center;margin:4px 0}',
     '.astra-md select{width:auto!important;min-width:0!important;display:inline-block!important;flex:0 0 auto;height:auto!important;margin:0!important;padding:4px 8px;border-radius:6px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:13px}',
     '.astra-md .astra-ind{margin-left:24px;margin-top:2px}',
+    '.astra-md .astra-sub{font-size:14px;font-weight:500;margin-top:14px}',
+    '.astra-md .astra-modes{margin-left:4px}',
     '.astra-md.astra-inline{max-width:none;width:auto;max-height:none;overflow:visible;box-shadow:none;margin:32px 0 8px}',
     '.astra-md h3{margin:22px 0 4px;font-size:15px;font-weight:600;color:var(--a-fg)}',
     '.astra-md .astra-pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;margin-left:10px;vertical-align:middle;background:var(--a-soft)}',
@@ -656,11 +667,33 @@
     var rec = el('input', { type: 'checkbox' }); rec.checked = !!data.recording;
     var mirror = el('input', { type: 'checkbox' }); mirror.checked = !!data.mirrorApi;
     var ticks = el('input', { type: 'checkbox' }); ticks.checked = !!data.readReceipts;
-    var devOut = el('input', { type: 'checkbox' }); devOut.checked = !!data.deviceOutgoing;
     var hist = el('input', { type: 'checkbox' }); hist.checked = !!data.importHistory;
     var days = daysSelect('astra-inbox-days', data.importHistoryDays || 30);
     var saved = el('div', { class: 'astra-saved' });
-    var inputs = [rec, ticks, devOut, mirror, hist, days];
+    // lo que se escribe desde el celular: una de tres opciones
+    var curMode = DEVICE_MODES.some(function (o) { return o.value === data.deviceMode; }) ? data.deviceMode : 'open';
+    var modeRadios = [];
+    var modeBox = el('div', { class: 'astra-modes' });
+    DEVICE_MODES.forEach(function (o) {
+      var r = el('input', { type: 'radio', name: 'astra-devmode-' + inboxId, value: o.value });
+      r.checked = o.value === curMode;
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        var prev = curMode;
+        curMode = o.value;
+        save({ deviceMode: o.value }, function () {
+          curMode = prev;
+          modeRadios.forEach(function (x) { x.checked = x.value === prev; });
+        });
+      });
+      modeRadios.push(r);
+      modeBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
+      modeBox.appendChild(el('div', { class: 'astra-h astra-ind', text: o.hint }));
+    });
+    if (!data.deviceBot) {
+      modeBox.appendChild(el('div', { class: 'astra-h astra-err', text: 'No se pudo preparar el bot "' + DEVICE_BOT_LABEL + '" en esta cuenta: los mensajes del celular pueden abrir conversaciones que atiende Captain aunque elijas "sin cambiar el estado".' }));
+    }
+    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -677,7 +710,6 @@
     rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
     mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
     ticks.addEventListener('change', function () { save({ readReceipts: ticks.checked }, function () { ticks.checked = !ticks.checked; }); });
-    devOut.addEventListener('change', function () { save({ deviceOutgoing: devOut.checked }, function () { devOut.checked = !devOut.checked; }); });
     hist.addEventListener('change', function () {
       save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
     });
@@ -770,9 +802,9 @@
       el('p', { text: 'Opciones de esta bandeja en AstraCalls. Los cambios se guardan al instante.' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
       el('label', { class: 'astra-ck' }, [ticks, 'Mostrar checks de entregado y leído']),
-      el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó.' }),
-      el('label', { class: 'astra-ck' }, [devOut, 'Lo que escribes desde el celular entra como mensaje normal']),
-      el('div', { class: 'astra-h astra-ind', text: 'Si lo desactivas, entra como nota privada. Como mensaje normal cuenta como respuesta de una persona: si la conversación estaba pendiente con un bot, se abre.' }),
+      el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó. Si un mensaje no sale, verás el motivo y podrás reenviarlo.' }),
+      el('div', { class: 'astra-sub', text: 'Lo que escribes desde el celular entra:' }),
+      modeBox,
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),

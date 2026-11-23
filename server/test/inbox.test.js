@@ -21,9 +21,63 @@ test('aprovisionar con historial y espejo de API los pasa a AstraCalls', async (
     assert.equal(cfg.import_history, true);
     assert.equal(cfg.import_history_days, 90);
     assert.equal(cfg.mirror_api, true);
-    // fork de AstraCalls: celular como mensaje normal y checks, activados por defecto
-    assert.equal(cfg.mirror_as_outgoing, true);
+    // fork de AstraCalls: celular como mensaje que abre la conversación, publicado por
+    // el bot de la cuenta, con título en español; checks encendidos
+    assert.equal(cfg.device_mode, 'open');
+    assert.equal(cfg.device_title, '📱 Enviado desde el celular');
+    assert.equal(cfg.device_bot_token, 'BOT-TOKEN-1');
     assert.equal(cfg.read_receipts, true);
+    assert.deepEqual(s.cw.state.bots.map((b) => b.name), ['WhatsApp (celular)']);
+  } finally { await s.close(); }
+});
+
+test('el bot del celular se reutiliza: una sola vez por cuenta', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    await provisioned(s);
+    const r = await s.call('POST', '/provision', { body: { ...BODY, inboxName: 'Soporte', deviceMode: 'note' } });
+    assert.equal(r.status, 201);
+    assert.equal(s.cw.state.bots.length, 1);
+    const cfgs = s.ac.state.calls.filter((c) => c.op === 'setChatwoot').map((c) => c.body);
+    assert.equal(cfgs[1].device_bot_token, 'BOT-TOKEN-1');
+    assert.equal(cfgs[1].device_mode, 'note');
+  } finally { await s.close(); }
+});
+
+test('si Chatwoot no deja crear el bot, la conexión sigue igual (sin bot)', async () => {
+  const s = await setup();
+  try {
+    s.cw.state.failBots = true;
+    await provisioned(s, { deviceMode: 'inventado' });
+    const cfg = s.ac.state.calls.find((c) => c.op === 'setChatwoot').body;
+    assert.equal(cfg.device_bot_token, undefined);
+    assert.equal(cfg.device_mode, 'open', 'opción desconocida → recomendada');
+    s.ac.state.sessions.get('sess1').paired = true;
+    const r = await s.call('GET', '/inbox/settings' + q(100));
+    assert.equal(r.json.deviceBot, false);
+    // cuando Chatwoot vuelve a permitirlo, abrir la configuración lo prepara
+    s.cw.state.failBots = false;
+    const r2 = await s.call('GET', '/inbox/settings' + q(100));
+    assert.equal(r2.json.deviceBot, true);
+    assert.equal(s.ac.state.sessions.get('sess1').chatwoot.device_bot_token, 'BOT-TOKEN-1');
+  } finally { await s.close(); }
+});
+
+test('bandeja conectada antes del bot: al abrir la configuración recibe bot y título', async () => {
+  const s = await setup();
+  try {
+    await provisioned(s);
+    const sess = s.ac.state.sessions.get('sess1');
+    delete sess.chatwoot.device_bot_token; delete sess.chatwoot.device_title; delete sess.chatwoot.device_mode; delete sess.chatwoot.read_receipts;
+    const r = await s.call('GET', '/inbox/settings' + q(100));
+    assert.equal(r.status, 200);
+    assert.equal(r.json.deviceMode, 'open', 'sin el campo = recomendado');
+    assert.equal(r.json.readReceipts, true, 'sin el campo = encendido');
+    assert.equal(r.json.deviceBot, true);
+    assert.equal(sess.chatwoot.device_title, '📱 Enviado desde el celular');
+    const n = s.ac.state.calls.filter((c) => c.op === 'setChatwoot').length;
+    await s.call('GET', '/inbox/settings' + q(100));
+    assert.equal(s.ac.state.calls.filter((c) => c.op === 'setChatwoot').length, n, 'ya preparado: no vuelve a escribir');
   } finally { await s.close(); }
 });
 
@@ -51,15 +105,16 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
-      mirrorApi: false, deviceOutgoing: true, readReceipts: true,
+      mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true,
       importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
 
-    r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, deviceOutgoing: false, readReceipts: false, importHistory: true, importHistoryDays: 7 } });
+    r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, deviceMode: 'keep', readReceipts: false, importHistory: true, importHistoryDays: 7 } });
     assert.equal(r.status, 200);
     assert.equal(r.json.recording, true);
     assert.equal(r.json.mirrorApi, true);
-    assert.equal(r.json.deviceOutgoing, false);
+    assert.equal(r.json.deviceMode, 'keep');
+    assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, deviceMode: 'otro' } })).status, 400);
     assert.equal(r.json.readReceipts, false);
     assert.equal(r.json.importHistory, true);
     assert.equal(r.json.importHistoryDays, 7);

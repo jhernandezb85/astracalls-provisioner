@@ -29,7 +29,7 @@ function readBody(req) {
 /** Chatwoot simulado. users: uid -> {id, role, accountId, token} */
 async function mockChatwoot(opts = {}) {
   const state = {
-    calls: [], inboxes: new Map(), nextInbox: 100, failCreate: false,
+    calls: [], inboxes: new Map(), nextInbox: 100, failCreate: false, bots: [], failBots: false,
     users: opts.users || { 'admin@example.com': { id: 1, role: 'administrator', accountId: 7, token: USER_TOKEN } },
   };
   const { server, url } = await listen(async (req, res) => {
@@ -59,6 +59,20 @@ async function mockChatwoot(opts = {}) {
       const b = state.inboxes.get(Number(m[2]));
       if (!b) return send(404, {});
       return send(200, { id: Number(m[2]), name: b.name, channel_type: 'Channel::Api', webhook_url: b.channel.webhook_url });
+    }
+    // Agent Bots de la cuenta (como Chatwoot: el token se entrega a administradores)
+    if ((m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/agent_bots(?:\/(\d+))?$/))) {
+      if (req.headers.api_access_token !== USER_TOKEN) return send(401, {});
+      if (state.failBots) return send(500, {});
+      const acct = Number(m[1]);
+      const view = (b) => ({ id: b.id, name: b.name, account_id: b.account_id, system_bot: !b.account_id, access_token: { token: b.token } });
+      if (req.method === 'GET' && !m[2]) return send(200, state.bots.filter((b) => !b.account_id || b.account_id === acct).map(view));
+      if (req.method === 'GET') { const b = state.bots.find((x) => x.id === Number(m[2])); return b ? send(200, view(b)) : send(404, {}); }
+      if (req.method === 'POST' && !m[2]) {
+        const b = { id: state.bots.length + 1, name: body.name, account_id: acct, token: 'BOT-TOKEN-' + (state.bots.length + 1) };
+        state.bots.push(b);
+        return send(200, view(b));
+      }
     }
     if (req.method === 'DELETE' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/inboxes\/(\d+)$/))) {
       state.inboxes.delete(Number(m[2]));
@@ -112,10 +126,14 @@ async function mockAstraCalls(opts = {}) {
       const cur = sess.chatwoot || {};
       const next = { ...cur, ...body };
       if (!body.account_token) next.account_token = cur.account_token;
+      if (!body.device_bot_token) next.device_bot_token = cur.device_bot_token;
       sess.chatwoot = next;
-      return send(200, { chatwoot: { ...next, account_token: '' } });
+      return send(200, { chatwoot: { ...next, account_token: '', device_bot_token: '' }, device_bot: !!next.device_bot_token });
     }
-    if (op === 'getChatwoot') return send(200, { chatwoot: { ...(sess.chatwoot || {}), account_token: '' } });
+    if (op === 'getChatwoot') {
+      const c = sess.chatwoot || {};
+      return send(200, { chatwoot: { ...c, account_token: '', device_bot_token: '' }, device_bot: !!c.device_bot_token });
+    }
     if (op === 'setRecording') { sess.recording = !!(body && body.enabled); return send(200, { enabled: sess.recording }); }
     if (op === 'getRecording') return send(200, { enabled: !!sess.recording });
     if (op === 'listMcp') return send(200, { keys: (sess.mcp || []).map(({ secret, ...k }) => k), max: 20, endpoint: 'https://calls.example.com/mcp' });

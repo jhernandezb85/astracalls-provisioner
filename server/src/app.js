@@ -96,6 +96,7 @@ function createApp({ cfg, provisioner, log }) {
     const out = await provisioner.provision({
       devise, accountId: b.accountId, inboxName: b.inboxName, phone: b.phone, record: b.record === true, method: b.method,
       importHistory: b.importHistory === true, importHistoryDays: b.importHistoryDays, mirrorApi: b.mirrorApi === true,
+      deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined,
     });
     res.status(201).json(out);
   }));
@@ -120,7 +121,7 @@ function createApp({ cfg, provisioner, log }) {
     res.json(await provisioner.updateInboxSettings(devise, {
       accountId: b.accountId, inboxId: b.inboxId,
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
-      deviceOutgoing: bool(b.deviceOutgoing), readReceipts: bool(b.readReceipts),
+      deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
       importHistoryDays: b.importHistoryDays,
     }));
   }));

@@ -12,6 +12,12 @@ function hostOf(u) {
   try { return new URL(String(u)).host.toLowerCase(); } catch { return ''; }
 }
 
+/** Lo escrito desde el celular: mensaje que abre la conversación, mensaje sin cambiar el estado, o nota privada. */
+const DEVICE_MODES = ['open', 'keep', 'note'];
+/** Agent Bot de la cuenta con el que AstraCalls publica lo escrito desde el celular. */
+const DEVICE_BOT = { name: 'WhatsApp (celular)', description: 'Mensajes escritos desde el celular conectado a WhatsApp + Llamadas.' };
+const DEVICE_TITLE = '📱 Enviado desde el celular';
+
 const PROFILE_CACHE_MS = 15000;
 const REPAIR_MIN_INTERVAL_MS = 20000;
 const QR_GRACE_MS = 8000;
@@ -63,7 +69,16 @@ class Provisioner {
 
   // ---------- aprovisionar ----------
 
-  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi }) {
+  /** Token del bot "WhatsApp (celular)" de la cuenta (lo crea si falta). Best-effort: null si no se pudo. */
+  async _deviceBotToken(accountId, token) {
+    try {
+      return await this.cw.ensureAgentBot(accountId, token, DEVICE_BOT);
+    } catch {
+      return null;
+    }
+  }
+
+  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi, deviceMode }) {
     const histDays = clampDays(importHistoryDays);
     const acct = Number(accountId);
     if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
@@ -115,6 +130,7 @@ class Provisioner {
       const inbox = await this.cw.createApiInbox(acct, token, { name, webhookUrl: this.ac.webhookUrlFor(created.sid) });
       created.inboxId = inbox.id;
       // 4) Configurar Chatwoot en AstraCalls (sin importar historial por defecto)
+      const botToken = await this._deviceBotToken(acct, token);
       await this.ac.setChatwoot(created.sid, {
         url: this.cfg.chatwootUrl,
         account_id: acct,
@@ -125,9 +141,12 @@ class Provisioner {
         import_history: !!importHistory,
         import_history_days: histDays,
         mirror_api: !!mirrorApi,
-        // fork de AstraCalls (rama lhcia): lo escrito desde el celular como mensaje normal
-        // y checks de entregado/leído. La imagen oficial ignora estos campos.
-        mirror_as_outgoing: true,
+        // fork de AstraCalls (rama lhcia): lo escrito desde el celular como mensaje
+        // (publicado por el bot de la cuenta) y checks de entregado/leído. La imagen
+        // oficial ignora estos campos.
+        device_mode: DEVICE_MODES.includes(deviceMode) ? deviceMode : 'open',
+        device_title: DEVICE_TITLE,
+        ...(botToken ? { device_bot_token: botToken } : {}),
         read_receipts: true,
       });
       // 5) Grabación
@@ -199,12 +218,30 @@ class Provisioner {
       this.log.warn('bandeja con webhook a una sesión que no le corresponde', { accountId: acct, inboxId: inbox });
       throw notManaged();
     }
-    return { sid, cfg, acct, inbox };
+    return { sid, cfg, acct, inbox, token };
   }
 
   async inboxSettings(devise, accountId, inboxId) {
-    const { sid, cfg } = await this._resolveInbox(devise, accountId, inboxId);
-    return this._settingsView(sid, cfg);
+    const { sid, cfg, acct, token } = await this._resolveInbox(devise, accountId, inboxId);
+    return this._settingsView(sid, await this._upgradeDevice(sid, cfg, acct, token));
+  }
+
+  /**
+   * Bandejas conectadas antes del bot del celular: al abrir su configuración se les
+   * prepara el bot y el título en español (una sola vez; si falla, se reintenta la
+   * próxima vez que se abra).
+   */
+  async _upgradeDevice(sid, cfg, acct, token) {
+    if (cfg.device_bot) return cfg;
+    const botToken = await this._deviceBotToken(acct, token);
+    if (!botToken) return cfg;
+    try {
+      await this.ac.setChatwoot(sid, { device_bot_token: botToken, device_title: DEVICE_TITLE });
+    } catch {
+      return cfg;
+    }
+    this.log.info('bot del celular preparado en bandeja existente', { accountId: acct });
+    return (await this.ac.getChatwootCfg(sid)) || cfg;
   }
 
   async _settingsView(sid, cfg) {
@@ -219,20 +256,25 @@ class Provisioner {
       phone: String(s.jid || s.lastJid || '').split(/[:@]/)[0] || '',
       recording,
       mirrorApi: !!cfg.mirror_api,
-      deviceOutgoing: !!cfg.mirror_as_outgoing,
-      readReceipts: !!cfg.read_receipts,
+      // AstraCalls trae ambos encendidos por defecto (campo ausente = encendido)
+      deviceMode: DEVICE_MODES.includes(cfg.device_mode) ? cfg.device_mode : 'open',
+      deviceBot: !!cfg.device_bot,
+      readReceipts: cfg.read_receipts !== false,
       importHistory: !!cfg.import_history,
       importHistoryDays: clampDays(cfg.import_history_days),
       mcpEndpoint: this.ac.mcpEndpoint(),
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceOutgoing, readReceipts, importHistory, importHistoryDays }) {
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, importHistory, importHistoryDays }) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+    if (deviceMode !== undefined && !DEVICE_MODES.includes(deviceMode)) {
+      throw new HttpError(400, 'Opción no válida para lo escrito desde el celular.', 'bad_request');
+    }
     if (typeof recording === 'boolean') await this.ac.setRecording(sid, recording);
     const patch = {};
     if (typeof mirrorApi === 'boolean') patch.mirror_api = mirrorApi;
-    if (typeof deviceOutgoing === 'boolean') patch.mirror_as_outgoing = deviceOutgoing;
+    if (deviceMode !== undefined) patch.device_mode = deviceMode;
     if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
     if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);

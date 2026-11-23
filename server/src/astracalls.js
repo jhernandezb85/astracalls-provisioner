@@ -85,7 +85,9 @@ class AstraCallsClient {
   async getChatwootCfg(sid) {
     const r = await this._req('GET', `/api/sessions/${encodeURIComponent(sid)}/chatwoot`, undefined, { allow404: true });
     if (r.status === 404) return null;
-    return (r.data && r.data.chatwoot) || null;
+    if (!r.data || !r.data.chatwoot) return null;
+    // device_bot: AstraCalls ya tiene el token del bot del celular (nunca lo devuelve)
+    return { ...r.data.chatwoot, device_bot: !!r.data.device_bot };
   }
 
   async getRecording(sid) {
