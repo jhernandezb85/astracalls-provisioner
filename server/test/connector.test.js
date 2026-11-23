@@ -163,7 +163,7 @@ function mockApi(dom, routes) {
   return calls;
 }
 
-const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
+const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, contactDelete: 'delete', importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
 
 test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
   const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38/configuration', SETTINGS_PAGE(), COOKIE);
@@ -193,9 +193,12 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   assert.match(card.textContent, /checks de entregado y leído/);
   assert.match(card.textContent, /Lo que escribes desde el celular entra/);
   assert.match(card.textContent, /Captain deja de responder/);
-  const radios = [...card.querySelectorAll('input[type=radio]')];
+  const radios = [...card.querySelectorAll('input[type=radio][name^="astra-devmode"]')];
   assert.deepEqual(radios.map((r) => r.value), ['open', 'keep', 'note']);
   assert.equal(radios.find((r) => r.checked).value, 'keep', 'muestra la opción guardada');
+  const delRadios = [...card.querySelectorAll('input[type=radio][name^="astra-delmode"]')];
+  assert.deepEqual(delRadios.map((r) => r.value), ['note', 'delete']);
+  assert.equal(delRadios.find((r) => r.checked).value, 'delete', 'muestra la opción guardada');
   assert.doesNotMatch(card.textContent, /No se pudo preparar el bot/, 'con bot no hay aviso');
   const aviso = card.querySelector('a[href="https://prov.example.com/aviso-ia"]');
   assert.ok(aviso, 'enlace al aviso');
@@ -217,6 +220,10 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   note.checked = true; note.dispatchEvent(new dom.window.Event('change'));
   await tick(80);
   assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.deviceMode === 'note'));
+  const keepNote = delRadios.find((r) => r.value === 'note');
+  keepNote.checked = true; keepNote.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.contactDelete === 'note'));
 
   // crear llave MCP: el botón está bloqueado hasta aceptar el aviso
   const createBtn = [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave');

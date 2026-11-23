@@ -14,6 +14,8 @@ function hostOf(u) {
 
 /** Lo escrito desde el celular: mensaje que abre la conversación, mensaje sin cambiar el estado, o nota privada. */
 const DEVICE_MODES = ['open', 'keep', 'note'];
+// cuando el cliente elimina un mensaje: conservar con nota (defecto) o eliminar
+const CONTACT_DELETE = ['note', 'delete'];
 /** Agent Bot de la cuenta con el que AstraCalls publica lo escrito desde el celular. */
 const DEVICE_BOT = { name: 'WhatsApp (celular)', description: 'Mensajes escritos desde el celular conectado a WhatsApp + Llamadas.' };
 const DEVICE_TITLE = '📱 Enviado desde el celular';
@@ -260,22 +262,27 @@ class Provisioner {
       deviceMode: DEVICE_MODES.includes(cfg.device_mode) ? cfg.device_mode : 'open',
       deviceBot: !!cfg.device_bot,
       readReceipts: cfg.read_receipts !== false,
+      contactDelete: CONTACT_DELETE.includes(cfg.contact_delete) ? cfg.contact_delete : 'note',
       importHistory: !!cfg.import_history,
       importHistoryDays: clampDays(cfg.import_history_days),
       mcpEndpoint: this.ac.mcpEndpoint(),
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, importHistory, importHistoryDays }) {
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, importHistory, importHistoryDays }) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
     if (deviceMode !== undefined && !DEVICE_MODES.includes(deviceMode)) {
       throw new HttpError(400, 'Opción no válida para lo escrito desde el celular.', 'bad_request');
+    }
+    if (contactDelete !== undefined && !CONTACT_DELETE.includes(contactDelete)) {
+      throw new HttpError(400, 'Opción no válida para los mensajes eliminados.', 'bad_request');
     }
     if (typeof recording === 'boolean') await this.ac.setRecording(sid, recording);
     const patch = {};
     if (typeof mirrorApi === 'boolean') patch.mirror_api = mirrorApi;
     if (deviceMode !== undefined) patch.device_mode = deviceMode;
     if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
+    if (contactDelete !== undefined) patch.contact_delete = contactDelete;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
     if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);
     // AstraCalls conserva lo que no viene en el payload (y el token si va vacío)

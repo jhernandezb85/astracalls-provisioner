@@ -265,6 +265,11 @@
     { value: 'note', label: 'Como nota privada',
       hint: 'Solo la ve tu equipo (nota amarilla). La conversación sigue como estaba y Captain sigue respondiendo.' }
   ];
+  var DELETE_MODES = [
+    { value: 'note', label: 'Conservarlo con una nota "El contacto eliminó este mensaje" (recomendado)' },
+    { value: 'delete', label: 'Eliminarlo también en el CRM' }
+  ];
+  var DELETE_HINT = 'Lo que tú eliminas para todos (en el celular o en el CRM) se elimina en ambos lados. WhatsApp solo permite eliminar durante unos 2 días.';
   var MIRROR_HINT ='Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
@@ -693,7 +698,27 @@
     if (!data.deviceBot) {
       modeBox.appendChild(el('div', { class: 'astra-h astra-err', text: 'No se pudo preparar el bot "' + DEVICE_BOT_LABEL + '" en esta cuenta: los mensajes del celular pueden abrir conversaciones que atiende Captain aunque elijas "sin cambiar el estado".' }));
     }
-    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios);
+    // cuando el cliente elimina un mensaje: una de dos opciones
+    var curDel = DELETE_MODES.some(function (o) { return o.value === data.contactDelete; }) ? data.contactDelete : 'note';
+    var delRadios = [];
+    var delBox = el('div', { class: 'astra-modes' });
+    DELETE_MODES.forEach(function (o) {
+      var r = el('input', { type: 'radio', name: 'astra-delmode-' + inboxId, value: o.value });
+      r.checked = o.value === curDel;
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        var prev = curDel;
+        curDel = o.value;
+        save({ contactDelete: o.value }, function () {
+          curDel = prev;
+          delRadios.forEach(function (x) { x.checked = x.value === prev; });
+        });
+      });
+      delRadios.push(r);
+      delBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
+    });
+    delBox.appendChild(el('div', { class: 'astra-h astra-ind', text: DELETE_HINT }));
+    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios, delRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -805,6 +830,8 @@
       el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó. Si un mensaje no sale, verás el motivo y podrás reenviarlo.' }),
       el('div', { class: 'astra-sub', text: 'Lo que escribes desde el celular entra:' }),
       modeBox,
+      el('div', { class: 'astra-sub', text: 'Cuando el cliente elimina un mensaje en WhatsApp:' }),
+      delBox,
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),

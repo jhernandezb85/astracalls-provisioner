@@ -122,6 +122,7 @@ function createApp({ cfg, provisioner, log }) {
       accountId: b.accountId, inboxId: b.inboxId,
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
+      contactDelete: typeof b.contactDelete === 'string' ? b.contactDelete : undefined,
       importHistoryDays: b.importHistoryDays,
     }));
   }));

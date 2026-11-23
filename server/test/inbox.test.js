@@ -105,7 +105,7 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
-      mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true,
+      mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true, contactDelete: 'note',
       importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
 
@@ -115,6 +115,10 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(r.json.mirrorApi, true);
     assert.equal(r.json.deviceMode, 'keep');
     assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, deviceMode: 'otro' } })).status, 400);
+    assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, contactDelete: 'otro' } })).status, 400);
+    const del = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, contactDelete: 'delete' } });
+    assert.equal(del.json.contactDelete, 'delete');
+    assert.equal(s.ac.state.sessions.get('sess1').chatwoot.contact_delete, 'delete');
     assert.equal(r.json.readReceipts, false);
     assert.equal(r.json.importHistory, true);
     assert.equal(r.json.importHistoryDays, 7);
