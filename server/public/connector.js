@@ -430,10 +430,10 @@
       el('label', { class: 'astra-l', for: 'astra-phone', text: 'Número de WhatsApp (con código de país)' }), phone,
       el('div', { class: 'astra-h', text: 'Solo dígitos, sin espacios. Ej.: 5215512345678' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
-      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
-      el('div', { class: 'astra-h astra-ind', text: 'Llegan como notas privadas, sin reenviar nada a tus contactos. Puede crear muchas conversaciones de golpe.' }),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
+      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
+      el('div', { class: 'astra-h astra-ind', text: 'Llegan como notas privadas, sin reenviar nada a tus contactos. Puede crear muchas conversaciones de golpe.' }),
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
       el('div', { class: 'astra-row' }, [cancel, go])
