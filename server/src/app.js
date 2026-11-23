@@ -1,0 +1,121 @@
+'use strict';
+
+const path = require('node:path');
+const express = require('express');
+const { HttpError, deviseFromReq } = require('./util');
+
+/** Limitador de ventana deslizante en memoria. */
+function makeLimiter(max, windowMs, now = () => Date.now()) {
+  const hits = new Map();
+  const timer = setInterval(() => {
+    const t = now();
+    for (const [k, arr] of hits) {
+      const f = arr.filter((x) => t - x < windowMs);
+      if (f.length) hits.set(k, f); else hits.delete(k);
+    }
+  }, windowMs);
+  if (timer.unref) timer.unref();
+  const check = (key) => {
+    const t = now();
+    const arr = (hits.get(key) || []).filter((x) => t - x < windowMs);
+    if (arr.length >= max) { hits.set(key, arr); return false; }
+    arr.push(t);
+    hits.set(key, arr);
+    return true;
+  };
+  check.close = () => clearInterval(timer);
+  return check;
+}
+
+function createApp({ cfg, provisioner, log }) {
+  const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', cfg.trustProxy);
+
+  const limIpProvision = makeLimiter(cfg.rateIpPerMin, 60000);
+  const limAccProvision = makeLimiter(cfg.rateAccountPerMin, 60000);
+  const limIpStatus = makeLimiter(cfg.rateIpPerMin * 12, 60000);
+  const limIdStatus = makeLimiter(90, 60000);
+
+  // Cabeceras de seguridad básicas
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
+
+  // Script estático (cargado con <script src>, no requiere CORS)
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    maxAge: '5m',
+    index: false,
+    setHeaders: (res) => res.setHeader('Content-Type', 'application/javascript; charset=utf-8'),
+  }));
+
+  app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // CORS estricto: solo el origen de Chatwoot
+  const api = express.Router();
+  api.use((req, res, next) => {
+    const origin = req.get('origin');
+    if (origin) {
+      if (origin !== cfg.allowedOrigin) return res.status(403).json({ error: 'Origen no permitido.', code: 'cors' });
+      res.setHeader('Access-Control-Allow-Origin', cfg.allowedOrigin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'content-type, access-token, client, uid');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Max-Age', '600');
+    }
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
+  api.use(express.json({ limit: '4kb' }));
+
+  const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
+  const needDevise = (req) => {
+    const d = deviseFromReq(req);
+    if (!d) throw new HttpError(401, 'Falta la sesión de Chatwoot. Recarga la página e inicia sesión de nuevo.', 'session_missing');
+    return d;
+  };
+
+  api.post('/provision', wrap(async (req, res) => {
+    if (!limIpProvision(req.ip)) throw new HttpError(429, 'Demasiados intentos. Espera un minuto e inténtalo de nuevo.', 'rate_limited');
+    const devise = needDevise(req);
+    const b = req.body || {};
+    if (!limAccProvision(String(b.accountId))) throw new HttpError(429, 'Demasiados intentos para esta cuenta. Espera un minuto.', 'rate_limited');
+    const out = await provisioner.provision({
+      devise, accountId: b.accountId, inboxName: b.inboxName, phone: b.phone, record: b.record === true, method: b.method,
+    });
+    res.status(201).json(out);
+  }));
+
+  api.get('/provision/:id/status', wrap(async (req, res) => {
+    if (!limIpStatus(req.ip) || !limIdStatus(req.params.id)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited');
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.status(req.params.id, devise));
+  }));
+
+  api.delete('/provision/:id', wrap(async (req, res) => {
+    if (!limIpStatus(req.ip)) throw new HttpError(429, 'Demasiadas solicitudes.', 'rate_limited');
+    const devise = needDevise(req);
+    res.json(await provisioner.cancel(req.params.id, devise));
+  }));
+
+  app.use(api);
+
+  // Errores: mensajes seguros en español, sin detalles internos
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, code: err.code });
+    if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+      return res.status(400).json({ error: 'La solicitud no es válida.', code: 'bad_request' });
+    }
+    log.error('error no controlado', { message: err && err.message });
+    res.status(500).json({ error: 'Error interno del servidor.', code: 'internal' });
+  });
+
+  app.close = () => [limIpProvision, limAccProvision, limIpStatus, limIdStatus].forEach((l) => l.close());
+  return app;
+}
+
+module.exports = { createApp, makeLimiter };

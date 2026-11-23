@@ -1,0 +1,21 @@
+{
+  "name": "astracalls-provisioner",
+  "version": "1.0.0",
+  "description": "Aprovisionador WhatsApp + Llamadas (Chatwoot + AstraCalls)",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "express": "4.21.2"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3",
+    "jsqr": "^1.4.0"
+  }
+}

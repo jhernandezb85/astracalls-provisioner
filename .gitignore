@@ -1,0 +1,5 @@
+node_modules/
+_ref/
+.env
+*.log
+INTERNO.md

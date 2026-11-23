@@ -1,0 +1,35 @@
+# Fragmento para AÑADIR como servicio al docker-compose existente de AstraCalls en Coolify.
+# (No reemplaza nada: se agrega dentro de `services:` junto a astracalls y al puente socat.)
+#
+# Opción A (recomendada): construir desde el repositorio/carpeta `server/` de este proyecto.
+#   El código vive en la carpeta server/ de este repositorio.
+# Opción B: construir la imagen aparte y usar `image:` (ver README).
+
+services:
+  provisioner:
+    build:
+      context: ./server            # ajusta la ruta relativa a donde esté la carpeta server/
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      # AstraCalls corre con network_mode: host en :8091 -> se llega vía host-gateway
+      ASTRACALLS_URL: "http://host.docker.internal:8091"
+      ASTRACALLS_API_KEY: ${ASTRACALLS_API_KEY:?define ASTRACALLS_API_KEY}   # API key MAESTRA (WACALLS_API_KEY de AstraCalls)
+      # URL pública de AstraCalls tal como la alcanza Chatwoot para enviar el webhook de la bandeja
+      ASTRACALLS_PUBLIC_URL: ${ASTRACALLS_PUBLIC_URL:?define ASTRACALLS_PUBLIC_URL}   # ej. https://calls.example.com
+      CHATWOOT_URL: ${CHATWOOT_URL:?define CHATWOOT_URL}                  # ej. https://crm.example.com
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:?define ALLOWED_ORIGIN}            # origen de Chatwoot, ej. https://crm.example.com
+      TRUST_PROXY: "1"             # detrás del proxy de Coolify (Traefik) para el rate limit por IP
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "3000"
+    # En Coolify: asigna el dominio https://provision.example.com a este servicio, puerto 3000.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # Si el stack usa labels de Traefik manuales en lugar del dominio de Coolify, añade aquí los tuyos.
