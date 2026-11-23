@@ -596,7 +596,8 @@
   // ======================================================================
   //  Configuración de una bandeja ya conectada (Ajustes de la bandeja)
   // ======================================================================
-  var INBOX_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/(\d+)\/?$/;
+  // las pestañas cambian la URL: .../inboxes/38, .../inboxes/38/configuration, etc.
+  var INBOX_RE = /^\/app\/accounts\/(\d+)\/settings\/inboxes\/(\d+)(?:\/[a-z0-9_-]+)?\/?$/;
   var INBOX_ATTR = 'data-astra-inbox';
   var inboxState = { key: '', status: '', data: null };
 

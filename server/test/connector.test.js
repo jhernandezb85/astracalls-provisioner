@@ -166,7 +166,7 @@ function mockApi(dom, routes) {
 const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
 
 test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
-  const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', SETTINGS_PAGE(), COOKIE);
+  const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38/configuration', SETTINGS_PAGE(), COOKIE);
   let keys = [];
   const calls = mockApi(dom, {
     'GET /inbox/settings': () => [200, MANAGED],
