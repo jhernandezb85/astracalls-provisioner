@@ -284,9 +284,9 @@
     '.astra-md .astra-wait{display:flex;align-items:center;gap:8px;color:var(--a-mut);margin-top:12px}',
     '.astra-md .astra-sp{width:14px;height:14px;border-radius:50%;border:2px solid var(--a-bd);border-top-color:var(--a-ac);animation:astra-spin .8s linear infinite}',
     '.astra-md .astra-ok{font-size:44px;text-align:center;margin:4px 0}',
-    '.astra-md select{padding:4px 8px;border-radius:6px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:13px}',
+    '.astra-md select{width:auto!important;min-width:0!important;display:inline-block!important;flex:0 0 auto;height:auto!important;margin:0!important;padding:4px 8px;border-radius:6px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:13px}',
     '.astra-md .astra-ind{margin-left:24px;margin-top:2px}',
-    '.astra-md.astra-inline{max-width:56rem;width:auto;max-height:none;overflow:visible;box-shadow:none;margin:0 24px 24px}',
+    '.astra-md.astra-inline{max-width:none;width:auto;max-height:none;overflow:visible;box-shadow:none;margin:32px 0 8px}',
     '.astra-md h3{margin:22px 0 4px;font-size:15px;font-weight:600;color:var(--a-fg)}',
     '.astra-md .astra-pill{display:inline-block;font-size:12px;font-weight:500;padding:2px 10px;border-radius:999px;margin-left:10px;vertical-align:middle;background:var(--a-soft)}',
     '.astra-md .astra-on-t{color:#30a46c}.astra-md .astra-off-t{color:var(--a-err)}',
@@ -625,12 +625,20 @@
     try { return new Date(v).toLocaleString(); } catch (e) { return String(v); }
   }
 
-  function findWebhookInput() {
-    var inputs = document.querySelectorAll('input');
-    for (var i = 0; i < inputs.length; i++) {
-      if (String(inputs[i].value || '').indexOf('/chatwoot/webhook') !== -1) return inputs[i];
+  /**
+   * Pestaña "Configuración" de una bandeja API: Chatwoot muestra ahí la casilla
+   * #hmacMandatory (id fijo, independiente del idioma). Devuelve el contenedor de
+   * esa pestaña (hijo directo de .max-w-7xl) para añadir la tarjeta al final.
+   */
+  function findConfigTab() {
+    var hm = document.getElementById('hmacMandatory');
+    if (!hm) return null;
+    var node = hm;
+    while (node.parentElement && node.parentElement !== document.body) {
+      if (node.parentElement.classList && node.parentElement.classList.contains('max-w-7xl')) return node;
+      node = node.parentElement;
     }
-    return null;
+    return hm.closest('.mx-6') || null;
   }
 
   function buildInboxCard(accountId, inboxId, data) {
@@ -769,8 +777,8 @@
     var m = location.pathname.match(INBOX_RE);
     if (!m) { removeInboxCards(); inboxState = { key: '', status: '', data: null }; return; }
     var accountId = Number(m[1]), inboxId = Number(m[2]), key = accountId + '/' + inboxId;
-    var hook = findWebhookInput(); // solo existe en la pestaña "Ajustes" de una bandeja API
-    if (!hook) { removeInboxCards(); return; }
+    var tab = findConfigTab(); // solo existe en la pestaña "Configuración" de una bandeja API
+    if (!tab) { removeInboxCards(); return; }
     if (inboxState.key !== key) {
       inboxState = { key: key, status: 'loading', data: null };
       api('GET', '/inbox/settings?accountId=' + accountId + '&inboxId=' + inboxId).then(function (d) {
@@ -786,13 +794,10 @@
     }
     if (inboxState.status !== 'managed') return;
     var existing = document.querySelector('[' + INBOX_ATTR + ']');
-    if (existing && existing.getAttribute(INBOX_ATTR) === key && document.body.contains(existing)) return;
+    if (existing && existing.getAttribute(INBOX_ATTR) === key && tab.contains(existing)) return;
     removeInboxCards();
-    var section = hook.closest('section');
-    var target = section && (section.querySelector('.max-w-7xl') || section.firstElementChild);
-    if (!target) return;
     ensureStyle();
-    target.insertBefore(buildInboxCard(accountId, inboxId, inboxState.data), target.firstChild);
+    tab.appendChild(buildInboxCard(accountId, inboxId, inboxState.data)); // al final de "Configuración"
   }
 
   function tryInject() {

@@ -137,10 +137,18 @@ test('sin cookie de sesión muestra un error claro y no llama al servicio', asyn
 
 // ---------- configuración de una bandeja ya conectada ----------
 const COOKIE = 'cw_d_session_info=' + encodeURIComponent(JSON.stringify({ 'access-token': 'AT', client: 'CL', uid: 'a@b.c' }));
-const SETTINGS_PAGE = (webhook) => `<div class="grid settings"><header>Prueba</header>
+// pestaña "Configuración" de una bandeja API (marcado de ConfigurationPage.vue)
+const SETTINGS_PAGE = () => `<div class="grid settings"><header>Prueba</header>
   <section class="w-full overflow-auto py-8"><div class="max-w-7xl mx-auto w-full">
-    <div class="flex mx-6"><label>URL de Webhook</label><input id="wh" value="${webhook}"></div>
+    <div class="mx-6 max-w-4xl" id="cfgtab"><div>
+      <div><label>Inbox Identifier</label><pre>quKPcQRC1ZDr5BhQYacjhpuM</pre></div>
+      <div class="flex gap-2 items-center"><input id="hmacMandatory" type="checkbox"><label for="hmacMandatory">HMAC</label></div>
+    </div></div>
   </div></section></div>`;
+// pestaña "Ajustes" (tiene el webhook, pero NO la casilla HMAC)
+const AJUSTES_PAGE = `<section class="w-full overflow-auto py-8"><div class="max-w-7xl mx-auto w-full">
+  <div class="flex mx-6"><label>URL de Webhook</label><input value="https://calls.example.com/api/sessions/abc/chatwoot/webhook"></div>
+</div></section>`;
 
 function mockApi(dom, routes) {
   const calls = [];
@@ -158,7 +166,7 @@ function mockApi(dom, routes) {
 const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
 
 test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
-  const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', SETTINGS_PAGE('https://calls.example.com/api/sessions/abc/chatwoot/webhook'), COOKIE);
+  const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', SETTINGS_PAGE(), COOKIE);
   let keys = [];
   const calls = mockApi(dom, {
     'GET /inbox/settings': () => [200, MANAGED],
@@ -179,7 +187,7 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
 
   const card = d.querySelector('[data-astra-inbox="1/38"]');
   assert.ok(card, 'tarjeta insertada');
-  assert.equal(d.querySelector('.max-w-7xl').firstElementChild, card, 'arriba de los ajustes');
+  assert.equal(d.getElementById('cfgtab').lastElementChild, card, 'al final de la pestaña Configuración');
   assert.match(card.textContent, /Conectado · \+5358310867/);
   assert.match(card.textContent, /Conectar tu IA \(MCP\)/);
   assert.match(card.textContent, /Todavía no hay llaves/);
@@ -211,14 +219,14 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
 });
 
 test('ajustes de bandeja: no hace nada si la bandeja no es de AstraCalls o en otra pestaña', async () => {
-  const notManaged = boot('https://crm.example.com/app/accounts/1/settings/inboxes/5', SETTINGS_PAGE('https://otro.example.com/hook/chatwoot/webhook'), COOKIE);
+  const notManaged = boot('https://crm.example.com/app/accounts/1/settings/inboxes/5', SETTINGS_PAGE(), COOKIE);
   mockApi(notManaged, { 'GET /inbox/settings': () => [404, { error: 'Esta bandeja no está conectada', code: 'not_managed' }] });
   notManaged.window.document.body.appendChild(notManaged.window.document.createElement('i'));
   await tick(120);
   assert.equal(notManaged.window.document.querySelector('[data-astra-inbox]'), null);
   notManaged.window.close();
 
-  const otherTab = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', '<section><div class="max-w-7xl"><p>Colaboradores</p></div></section>', COOKIE);
+  const otherTab = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38', AJUSTES_PAGE, COOKIE);
   const calls = mockApi(otherTab, { 'GET /inbox/settings': () => [200, MANAGED] });
   otherTab.window.document.body.appendChild(otherTab.window.document.createElement('i'));
   await tick(120);

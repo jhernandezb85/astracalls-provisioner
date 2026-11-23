@@ -108,7 +108,7 @@ que el script lee de la cookie `cw_d_session_info`, y solo aceptan CORS desde `A
 - `GET /provision/{id}/status` → `{state: starting|qr|code|connected|expired|cancelled, qr?, code?, inboxId, accountId, connectedPhone?}`
 - `DELETE /provision/{id}` → cancela y revierte (si aún no se conectó)
 
-Bandejas ya conectadas (el script las muestra en **Ajustes** de la bandeja):
+Bandejas ya conectadas (el script las muestra al final de la pestaña **Configuración** de la bandeja):
 
 - `GET /inbox/settings?accountId&inboxId` → `{managed, connected, phone, recording, mirrorApi, importHistory, importHistoryDays, mcpEndpoint}`
 - `PUT /inbox/settings` `{accountId, inboxId, recording?, mirrorApi?, importHistory?, importHistoryDays?}` → misma forma
