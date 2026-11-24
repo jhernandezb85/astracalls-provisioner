@@ -120,3 +120,16 @@ test('si Meta rechaza: nota privada y sin marca', async () => {
   assert.equal(marks.length, 0);
   assert.match(notes[0][3], /Invalid token/);
 });
+
+test('verifyDataset: token que solo envía eventos (#100) se acepta; token inválido (190) no', async () => {
+  const mk = (first, me) => new CapiSender({ store: tmpStore(), cw: {}, log: silent, fetch: async (url) => {
+    if (url.includes('/me?')) return { ok: !!me, json: async () => (me ? { id: '1' } : { error: { code: 190 } }) };
+    return first;
+  } });
+  const perm = { ok: false, json: async () => ({ error: { code: 100, message: '(#100) Missing Permission' } }) };
+  assert.equal(await mk(perm, true).verifyDataset('1', 't'), '');
+  const bad = { ok: false, json: async () => ({ error: { code: 190, message: 'Invalid OAuth access token' } }) };
+  await assert.rejects(mk(bad, true).verifyDataset('1', 't'), /Invalid OAuth/);
+  const ok = { ok: true, json: async () => ({ id: '1', name: 'WABA' }) };
+  assert.equal(await mk(ok, false).verifyDataset('1', 't'), 'WABA');
+});

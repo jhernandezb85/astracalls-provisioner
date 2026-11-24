@@ -1071,8 +1071,8 @@
       if (hint) nodes.push(el('div', { class: 'astra-h', text: hint }));
       return nodes;
     };
-    var ds = el('input', { type: 'text', value: c.datasetId || '', placeholder: 'Ej. 1449035617173447', autocomplete: 'off', inputmode: 'numeric' });
-    var waba = el('input', { type: 'text', value: c.wabaId || '', placeholder: 'Ej. 2061295954353574', autocomplete: 'off', inputmode: 'numeric' });
+    var ds = el('input', { type: 'text', value: c.datasetId || '', placeholder: 'Ej. 123456789012345', autocomplete: 'off', inputmode: 'numeric' });
+    var waba = el('input', { type: 'text', value: c.wabaId || '', placeholder: 'Ej. 109876543210987', autocomplete: 'off', inputmode: 'numeric' });
     var tok = el('input', { type: 'password', value: '', autocomplete: 'new-password',
       placeholder: c.tokenHint ? 'Guardado (' + c.tokenHint + '). Déjalo vacío para conservarlo' : 'Token del usuario del sistema' });
     var cur = el('input', { type: 'text', value: c.currency || 'PEN', maxlength: '3', autocomplete: 'off', style: 'text-transform:uppercase' });

@@ -155,11 +155,20 @@ class CapiSender {
       throw new Error('No se pudo conectar con Meta. Intenta de nuevo.');
     }
     const data = await res.json().catch(() => null);
-    if (!res.ok || !data || !data.id) {
-      const m = data && data.error && data.error.message ? data.error.message : 'respuesta inesperada';
-      throw new Error('Meta rechazó el token o el ID del conjunto de datos: ' + m);
+    if (res.ok && data && data.id) return data.name || '';
+    const err = (data && data.error) || {};
+    // 190 = token inválido o vencido. Otros errores (ej. #100 Missing Permission)
+    // aparecen con el token que genera el Administrador de eventos, que solo
+    // permite ENVIAR eventos: en ese caso basta con que el token sea válido.
+    if (Number(err.code) !== 190) {
+      let me = null;
+      try {
+        const r2 = await this.fetch(`${GRAPH}/me?fields=id`, { headers: { Authorization: 'Bearer ' + token } });
+        me = r2.ok ? await r2.json().catch(() => null) : null;
+      } catch { me = null; }
+      if (me && me.id) return '';
     }
-    return data.name || '';
+    throw new Error('Meta rechazó el token: ' + (err.message || 'respuesta inesperada'));
   }
 
   /** Construye el evento Purchase para Meta. */
