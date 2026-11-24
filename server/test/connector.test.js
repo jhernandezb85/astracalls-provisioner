@@ -331,7 +331,7 @@ const INTEGRATION = (id, name, enabled) => `<div class="flex flex-col flex-1 p-4
   <div class="flex flex-col m-0 flex-1"><div class="font-medium mb-2 flex justify-between items-center"><span class="text-heading-3">${name}</span>
   <a href="/app/accounts/1/settings/integrations/${id}"><button>Configurar</button></a></div><p>Descripción de ${name}</p></div></div>`;
 const INTEGRATIONS_PAGE = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="grid">${INTEGRATION('webhook', 'Webhook', false)}${INTEGRATION('openai', 'OpenAI', true)}${INTEGRATION('dialogflow', 'Dialogflow', false)}</div>`;
-const CAPI_OFF = { enabled: false, attributes: [{ key: 'ctwa_clid', name: 'Anuncio · Click ID', present: false }, { key: 'ad_id', name: 'Anuncio · ID', present: false }] };
+const CAPI_OFF = { enabled: false, attributes: [{ key: 'ctwa_clid', name: 'Anuncio · Click ID', required: true, present: false }, { key: 'meta_ad_id', name: 'Anuncio · ID', required: true, present: false }, { key: 'anuncio_titulo', name: 'Anuncio · Título', present: false }] };
 const CAPI_ON = { enabled: true, attributes: CAPI_OFF.attributes.map((a) => ({ ...a, present: true })) };
 
 test('Integraciones: tarjeta "Meta · API de conversiones" y activar', async () => {
@@ -357,10 +357,13 @@ test('Integraciones: tarjeta "Meta · API de conversiones" y activar', async () 
   const md = d.querySelector('.astra-md');
   assert.ok(md, 'abre la ventana');
   assert.match(md.textContent, /Click ID/);
+  const opt = [...md.querySelectorAll('input[type=checkbox]')].find((c) => c.value === 'anuncio_titulo');
+  assert.equal(opt.checked, false, 'opcional desmarcado por defecto');
+  opt.checked = true;
   const go = [...md.querySelectorAll('button')].find((b) => b.textContent === 'Activar');
   go.click();
   await tick(150);
-  assert.ok(calls.some((c) => c.key === 'POST /account/capi' && c.body.accountId === 1));
+  assert.ok(calls.some((c) => c.key === 'POST /account/capi' && c.body.accountId === 1 && c.body.extras.join() === 'anuncio_titulo'));
   assert.match(d.querySelector('.astra-md').textContent, /Activado/);
   assert.match(d.querySelector('[data-astra-capi="1"]').textContent, /Activado/, 'la tarjeta cambia de estado');
 });

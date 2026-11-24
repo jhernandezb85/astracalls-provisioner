@@ -19,12 +19,15 @@ const CONTACT_DELETE = ['note', 'delete'];
 // atributos de conversación con los datos del anuncio (para CAPI). Son de la CUENTA:
 // se crean desde la tarjeta "Meta · API de conversiones" en Integraciones, y
 // AstraCalls los llena en cualquier bandeja de la cuenta si existen.
+// Los "required" son los que usa CAPI; los demás son opcionales (ya están en la
+// nota y en el primer mensaje) y se crean solo si el administrador los marca.
 const AD_ATTRIBUTES = [
-  { key: 'ctwa_clid', name: 'Anuncio · Click ID', type: 'text', description: 'Click ID del anuncio de WhatsApp (ctwa_clid), para la API de conversiones de Meta' },
-  { key: 'ad_id', name: 'Anuncio · ID', type: 'text', description: 'ID del anuncio por el que llegó el contacto' },
-  { key: 'ad_title', name: 'Anuncio · Título', type: 'text', description: 'Título del anuncio' },
-  { key: 'ad_source', name: 'Anuncio · Origen', type: 'text', description: 'Origen del anuncio (ej. FB_Ads)' },
-  { key: 'ad_url', name: 'Anuncio · Enlace', type: 'link', description: 'Enlace del anuncio' },
+  { key: 'ctwa_clid', required: true, name: 'Anuncio · Click ID', type: 'text', description: 'Click ID del anuncio de WhatsApp (ctwa_clid), para la API de conversiones de Meta' },
+  { key: 'meta_ad_id', required: true, name: 'Anuncio · ID', type: 'text', description: 'ID del anuncio por el que llegó el contacto' },
+  { key: 'monto', required: true, name: 'Monto de la venta', type: 'number', description: 'Lo llena el equipo al cerrar la venta; es el valor que se le envía a Meta' },
+  { key: 'anuncio_titulo', name: 'Anuncio · Título', type: 'text', description: 'Título del anuncio' },
+  { key: 'anuncio_origen', name: 'Anuncio · Origen', type: 'text', description: 'Origen del anuncio (ej. FB_Ads)' },
+  { key: 'anuncio_enlace', name: 'Anuncio · Enlace', type: 'link', description: 'Enlace del anuncio' },
 ];
 /** Agent Bot de la cuenta con el que AstraCalls publica lo escrito desde el celular. */
 const DEVICE_BOT = { name: 'WhatsApp (celular)', description: 'Mensajes escritos desde el celular conectado a WhatsApp + Llamadas.' };
@@ -320,19 +323,21 @@ class Provisioner {
     return this._capiView(have);
   }
 
-  /** Crea en la cuenta los atributos del anuncio que falten. */
-  async enableCapi(devise, accountId) {
+  /** Crea en la cuenta los atributos del anuncio que falten: los de CAPI y los opcionales marcados. */
+  async enableCapi(devise, accountId, extras) {
     const { acct, token } = await this._adminToken(devise, accountId);
+    const wanted = new Set(Array.isArray(extras) ? extras.map(String) : []);
+    const defs = AD_ATTRIBUTES.filter((d) => d.required || wanted.has(d.key));
     let ok = false;
-    try { ok = await this.cw.ensureConversationAttributes(acct, token, AD_ATTRIBUTES); } catch { ok = false; }
+    try { ok = await this.cw.ensureConversationAttributes(acct, token, defs); } catch { ok = false; }
     if (!ok) throw new HttpError(502, 'No se pudieron crear los atributos del anuncio en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
     this.log.info('atributos de anuncio creados', { accountId: acct });
-    return this._capiView(await this.cw.conversationAttributeKeys(acct, token) || new Set(AD_ATTRIBUTES.map((d) => d.key)));
+    return this._capiView(await this.cw.conversationAttributeKeys(acct, token) || new Set(defs.map((d) => d.key)));
   }
 
   _capiView(have) {
-    const attributes = AD_ATTRIBUTES.map((d) => ({ key: d.key, name: d.name, present: have.has(d.key) }));
-    return { enabled: attributes.every((a) => a.present), attributes };
+    const attributes = AD_ATTRIBUTES.map((d) => ({ key: d.key, name: d.name, required: !!d.required, present: have.has(d.key) }));
+    return { enabled: attributes.filter((a) => a.required).every((a) => a.present), attributes };
   }
 
   async listMcpKeys(devise, accountId, inboxId) {

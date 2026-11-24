@@ -138,7 +138,8 @@ function createApp({ cfg, provisioner, log }) {
     writeLimit(req);
     const devise = needDevise(req);
     res.setHeader('Cache-Control', 'no-store');
-    res.json(await provisioner.enableCapi(devise, (req.body || {}).accountId));
+    const b = req.body || {};
+    res.json(await provisioner.enableCapi(devise, b.accountId, b.extras));
   }));
 
   // ---- llaves MCP de la bandeja (conectar una IA a ese número) ----

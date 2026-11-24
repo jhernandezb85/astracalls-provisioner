@@ -1002,39 +1002,57 @@
 
   function renderCapi(d) {
     var err = el('div', { class: 'astra-err', style: 'display:none' });
+    var attrs = d.attributes || [];
     var list = el('ul', { style: 'margin:8px 0 0;padding-left:20px;color:var(--a-mut)' });
-    (d.attributes || []).forEach(function (a) {
+    attrs.filter(function (a) { return a.required; }).forEach(function (a) {
       list.appendChild(el('li', null, [a.name + ' ', el('code', { text: a.key }), a.present ? ' ✓' : '']));
+    });
+    var extras = [];
+    var optBox = el('div');
+    attrs.filter(function (a) { return !a.required; }).forEach(function (a) {
+      var ck = el('input', { type: 'checkbox', value: a.key });
+      ck.checked = !!a.present; ck.disabled = !!a.present;
+      if (!a.present) extras.push(ck);
+      optBox.appendChild(el('label', { class: 'astra-ck', style: 'margin-top:6px' }, [ck, a.name + ' ', el('code', { text: a.key }), a.present ? ' ✓' : '']));
     });
     var close = el('button', { class: 'astra-b', type: 'button', text: d.enabled ? 'Cerrar' : 'Cancelar', onclick: closeModal });
     var nodes = [
       el('h2', { text: 'Meta · API de conversiones' }),
       el('p', { text: 'Cuando un cliente llega por un anuncio de Facebook o Instagram que abre WhatsApp, se guardan en la conversación el anuncio y su Click ID. Con eso se le puede avisar a Meta quién compró, para que tus anuncios busquen más clientes como esos.' }),
-      el('div', { class: 'astra-sub', text: 'Atributos de la conversación' }),
+      el('div', { class: 'astra-sub', text: 'Atributos para la API de conversiones' }),
       list,
-      el('div', { class: 'astra-h', text: 'Funciona en todas las bandejas de WhatsApp + Llamadas de esta cuenta. Se ven en el panel derecho de cada conversación, en "Atributos de la conversación".' })
+      el('div', { class: 'astra-h', text: 'El Click ID y el ID del anuncio se llenan solos en todas las bandejas de WhatsApp + Llamadas de esta cuenta. El monto lo pone tu equipo cuando cierra la venta.' })
     ];
+    if (attrs.some(function (a) { return !a.required; })) {
+      nodes.push(el('div', { class: 'astra-sub', text: 'Opcionales' }));
+      nodes.push(el('div', { class: 'astra-h', text: 'Ya aparecen en la nota del anuncio y en el primer mensaje; márcalos si también los quieres como atributos.' }));
+      nodes.push(optBox);
+    }
     if (d.enabled) {
       nodes.push(el('div', { class: 'astra-warn' }, [el('strong', { text: 'Activado. ' }), 'Para desactivarlo, borra los atributos "Anuncio · …" en Ajustes → Atributos personalizados.']));
-      nodes.push(el('div', { class: 'astra-row' }, [close]));
-    } else {
-      var go = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Activar' });
-      go.addEventListener('click', function () {
-        go.disabled = true; close.disabled = true; go.textContent = 'Activando…'; err.style.display = 'none';
-        modal.canEsc = false;
-        api('POST', '/account/capi', { accountId: modal.accountId }).then(function (r) {
-          capiState.data = r; removeCapiCards(); schedule();
-          if (modal) renderCapi(r);
-        }, function (e) {
-          if (!modal) return;
-          modal.canEsc = true;
-          go.disabled = false; close.disabled = false; go.textContent = 'Activar';
-          err.textContent = e.message; err.style.display = '';
-        });
-      });
-      nodes.push(err);
-      nodes.push(el('div', { class: 'astra-row' }, [close, go]));
     }
+    var label = d.enabled ? 'Guardar' : 'Activar';
+    var go = el('button', { class: 'astra-b astra-pri', type: 'button', text: label });
+    if (d.enabled) {
+      go.disabled = true;
+      extras.forEach(function (ck) { ck.addEventListener('change', function () { go.disabled = !extras.some(function (x) { return x.checked; }); }); });
+    }
+    go.addEventListener('click', function () {
+      var chosen = extras.filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+      go.disabled = true; close.disabled = true; go.textContent = d.enabled ? 'Guardando…' : 'Activando…'; err.style.display = 'none';
+      modal.canEsc = false;
+      api('POST', '/account/capi', { accountId: modal.accountId, extras: chosen }).then(function (r) {
+        capiState.data = r; removeCapiCards(); schedule();
+        if (modal) renderCapi(r);
+      }, function (e) {
+        if (!modal) return;
+        modal.canEsc = true;
+        go.disabled = false; close.disabled = false; go.textContent = label;
+        err.textContent = e.message; err.style.display = '';
+      });
+    });
+    nodes.push(err);
+    nodes.push(el('div', { class: 'astra-row' }, d.enabled && !extras.length ? [close] : [close, go]));
     setBox(nodes, true);
   }
 

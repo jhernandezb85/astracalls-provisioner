@@ -142,7 +142,7 @@ test('Meta · API de conversiones: atributos del anuncio en la cuenta', async ()
     let r = await s.call('GET', '/account/capi?accountId=7');
     assert.equal(r.status, 200);
     assert.equal(r.json.enabled, false);
-    assert.deepEqual(r.json.attributes.map((a) => a.key), ['ctwa_clid', 'ad_id', 'ad_title', 'ad_source', 'ad_url']);
+    assert.deepEqual(r.json.attributes.map((a) => a.key), ['ctwa_clid', 'meta_ad_id', 'monto', 'anuncio_titulo', 'anuncio_origen', 'anuncio_enlace']);
     // si Chatwoot falla, error claro
     cw.failAttrs = true;
     assert.equal((await s.call('POST', '/account/capi', { body: { accountId: 7 } })).status, 502);
@@ -151,9 +151,13 @@ test('Meta · API de conversiones: atributos del anuncio en la cuenta', async ()
     assert.equal(r.status, 200);
     assert.equal(r.json.enabled, true);
     assert.ok(cw.attrDefs.every((d) => d.attribute_model === 'conversation_attribute' && d.account_id === 7));
-    assert.equal(cw.attrDefs.find((d) => d.attribute_key === 'ad_url').attribute_display_type, 'link');
+    assert.equal(cw.attrDefs.find((d) => d.attribute_key === 'monto').attribute_display_type, 'number');
+    assert.deepEqual(cw.attrDefs.map((d) => d.attribute_key), ['ctwa_clid', 'meta_ad_id', 'monto'], 'sin marcar, solo los de CAPI');
+    r = await s.call('POST', '/account/capi', { body: { accountId: 7, extras: ['anuncio_titulo', 'inventado'] } });
+    assert.equal(cw.attrDefs.length, 4, 'agrega solo el opcional marcado (y nunca uno inventado)');
+    assert.equal(r.json.attributes.find((a) => a.key === 'anuncio_titulo').present, true);
     await s.call('POST', '/account/capi', { body: { accountId: 7 } });
-    assert.equal(cw.attrDefs.length, 5, 'no duplica');
+    assert.equal(cw.attrDefs.length, 4, 'no duplica');
     assert.equal((await s.call('GET', '/account/capi?accountId=7')).json.enabled, true);
     // solo administradores
     const agent = { ...DEVISE, uid: 'agente@example.com' };
