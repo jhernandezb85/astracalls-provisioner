@@ -91,6 +91,32 @@ class ChatwootClient {
     return tokenOf(bot) || null;
   }
 
+  /**
+   * Crea en la cuenta los atributos de conversación que falten (por attribute_key).
+   * defs: [{ key, name, type, description }]. Devuelve true si al final existen todos.
+   */
+  async ensureConversationAttributes(accountId, accessToken, defs) {
+    const h = { api_access_token: accessToken };
+    const list = await this._json('GET', `/api/v1/accounts/${accountId}/custom_attribute_definitions?attribute_model=conversation_attribute`, h);
+    if (!list.ok) return false;
+    const have = new Set((Array.isArray(list.data) ? list.data : [])
+      .filter((d) => d && (d.attribute_model === 'conversation_attribute' || d.attribute_model === 0))
+      .map((d) => d.attribute_key));
+    let ok = true;
+    for (const d of defs) {
+      if (have.has(d.key)) continue;
+      const r = await this._json('POST', `/api/v1/accounts/${accountId}/custom_attribute_definitions`, h, {
+        attribute_display_name: d.name,
+        attribute_key: d.key,
+        attribute_model: 'conversation_attribute',
+        attribute_display_type: d.type,
+        attribute_description: d.description,
+      });
+      if (!r.ok) ok = false;
+    }
+    return ok;
+  }
+
   async deleteInbox(accountId, accessToken, inboxId) {
     const r = await this._json('DELETE', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
     return r.ok || r.status === 404;

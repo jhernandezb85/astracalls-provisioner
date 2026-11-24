@@ -123,6 +123,7 @@ function createApp({ cfg, provisioner, log }) {
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
       contactDelete: typeof b.contactDelete === 'string' ? b.contactDelete : undefined,
+      adAttributes: bool(b.adAttributes),
       importHistoryDays: b.importHistoryDays,
     }));
   }));

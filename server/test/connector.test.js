@@ -224,6 +224,11 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   keepNote.checked = true; keepNote.dispatchEvent(new dom.window.Event('change'));
   await tick(80);
   assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.contactDelete === 'note'));
+  const adsBox = boxFor(/datos de los anuncios/);
+  assert.equal(adsBox.checked, false, 'apagada por defecto');
+  adsBox.checked = true; adsBox.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.adAttributes === true));
 
   // crear llave MCP: el botón está bloqueado hasta aceptar el aviso
   const createBtn = [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave');

@@ -270,6 +270,7 @@
     { value: 'delete', label: 'Eliminarlo también en el CRM' }
   ];
   var DELETE_HINT = 'Lo que tú eliminas para todos (en el celular o en el CRM) se elimina en ambos lados. WhatsApp solo permite eliminar durante unos 2 días.';
+  var ADS_HINT = 'Cuando un cliente llega por un anuncio de Facebook o Instagram, se guardan en la conversación el anuncio y su Click ID. Sirve para avisarle a Meta quién compró. Al encenderla se crean en la cuenta los atributos "Anuncio · …".';
   var MIRROR_HINT ='Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
@@ -672,6 +673,7 @@
     var rec = el('input', { type: 'checkbox' }); rec.checked = !!data.recording;
     var mirror = el('input', { type: 'checkbox' }); mirror.checked = !!data.mirrorApi;
     var ticks = el('input', { type: 'checkbox' }); ticks.checked = !!data.readReceipts;
+    var ads = el('input', { type: 'checkbox' }); ads.checked = !!data.adAttributes;
     var hist = el('input', { type: 'checkbox' }); hist.checked = !!data.importHistory;
     var days = daysSelect('astra-inbox-days', data.importHistoryDays || 30);
     var saved = el('div', { class: 'astra-saved' });
@@ -718,7 +720,7 @@
       delBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
     });
     delBox.appendChild(el('div', { class: 'astra-h astra-ind', text: DELETE_HINT }));
-    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios, delRadios);
+    var inputs = [rec, ticks, ads, mirror, hist, days].concat(modeRadios, delRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -735,6 +737,7 @@
     rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
     mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
     ticks.addEventListener('change', function () { save({ readReceipts: ticks.checked }, function () { ticks.checked = !ticks.checked; }); });
+    ads.addEventListener('change', function () { save({ adAttributes: ads.checked }, function () { ads.checked = !ads.checked; }); });
     hist.addEventListener('change', function () {
       save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
     });
@@ -832,6 +835,8 @@
       modeBox,
       el('div', { class: 'astra-sub', text: 'Cuando el cliente elimina un mensaje en WhatsApp:' }),
       delBox,
+      el('label', { class: 'astra-ck' }, [ads, 'Guardar los datos de los anuncios (para la API de conversiones de Meta)']),
+      el('div', { class: 'astra-h astra-ind', text: ADS_HINT }),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),

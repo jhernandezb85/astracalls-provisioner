@@ -29,7 +29,7 @@ function readBody(req) {
 /** Chatwoot simulado. users: uid -> {id, role, accountId, token} */
 async function mockChatwoot(opts = {}) {
   const state = {
-    calls: [], inboxes: new Map(), nextInbox: 100, failCreate: false, bots: [], failBots: false,
+    calls: [], inboxes: new Map(), nextInbox: 100, failCreate: false, bots: [], failBots: false, attrDefs: [], failAttrs: false,
     users: opts.users || { 'admin@example.com': { id: 1, role: 'administrator', accountId: 7, token: USER_TOKEN } },
   };
   const { server, url } = await listen(async (req, res) => {
@@ -59,6 +59,18 @@ async function mockChatwoot(opts = {}) {
       const b = state.inboxes.get(Number(m[2]));
       if (!b) return send(404, {});
       return send(200, { id: Number(m[2]), name: b.name, channel_type: 'Channel::Api', webhook_url: b.channel.webhook_url });
+    }
+    // atributos personalizados de la cuenta
+    if ((m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/custom_attribute_definitions(?:\?.*)?$/))) {
+      if (req.headers.api_access_token !== USER_TOKEN) return send(401, {});
+      if (state.failAttrs) return send(500, {});
+      const acct = Number(m[1]);
+      if (req.method === 'GET') return send(200, state.attrDefs.filter((d) => d.account_id === acct));
+      if (req.method === 'POST') {
+        const d = { id: state.attrDefs.length + 1, account_id: acct, attribute_key: body.attribute_key, attribute_model: body.attribute_model, attribute_display_name: body.attribute_display_name, attribute_display_type: body.attribute_display_type };
+        state.attrDefs.push(d);
+        return send(200, d);
+      }
     }
     // Agent Bots de la cuenta (como Chatwoot: el token se entrega a administradores)
     if ((m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/agent_bots(?:\/(\d+))?$/))) {

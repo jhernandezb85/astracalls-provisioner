@@ -16,6 +16,15 @@ function hostOf(u) {
 const DEVICE_MODES = ['open', 'keep', 'note'];
 // cuando el cliente elimina un mensaje: conservar con nota (defecto) o eliminar
 const CONTACT_DELETE = ['note', 'delete'];
+// atributos de conversación con los datos del anuncio (para CAPI); solo se crean
+// cuando el administrador enciende la opción en la tarjeta de la bandeja
+const AD_ATTRIBUTES = [
+  { key: 'ctwa_clid', name: 'Anuncio · Click ID', type: 'text', description: 'Click ID del anuncio de WhatsApp (ctwa_clid), para la API de conversiones de Meta' },
+  { key: 'ad_id', name: 'Anuncio · ID', type: 'text', description: 'ID del anuncio por el que llegó el contacto' },
+  { key: 'ad_title', name: 'Anuncio · Título', type: 'text', description: 'Título del anuncio' },
+  { key: 'ad_source', name: 'Anuncio · Origen', type: 'text', description: 'Origen del anuncio (ej. FB_Ads)' },
+  { key: 'ad_url', name: 'Anuncio · Enlace', type: 'link', description: 'Enlace del anuncio' },
+];
 /** Agent Bot de la cuenta con el que AstraCalls publica lo escrito desde el celular. */
 const DEVICE_BOT = { name: 'WhatsApp (celular)', description: 'Mensajes escritos desde el celular conectado a WhatsApp + Llamadas.' };
 const DEVICE_TITLE = '📱 Enviado desde el celular';
@@ -263,14 +272,21 @@ class Provisioner {
       deviceBot: !!cfg.device_bot,
       readReceipts: cfg.read_receipts !== false,
       contactDelete: CONTACT_DELETE.includes(cfg.contact_delete) ? cfg.contact_delete : 'note',
+      adAttributes: !!cfg.ad_attributes,
       importHistory: !!cfg.import_history,
       importHistoryDays: clampDays(cfg.import_history_days),
       mcpEndpoint: this.ac.mcpEndpoint(),
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, importHistory, importHistoryDays }) {
-    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, adAttributes, importHistory, importHistoryDays }) {
+    const { sid, acct, token } = await this._resolveInbox(devise, accountId, inboxId);
+    if (adAttributes === true) {
+      // primero los atributos en la cuenta: sin ellos los datos no se ven en Chatwoot
+      let ok = false;
+      try { ok = await this.cw.ensureConversationAttributes(acct, token, AD_ATTRIBUTES); } catch { ok = false; }
+      if (!ok) throw new HttpError(502, 'No se pudieron crear los atributos del anuncio en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
+    }
     if (deviceMode !== undefined && !DEVICE_MODES.includes(deviceMode)) {
       throw new HttpError(400, 'Opción no válida para lo escrito desde el celular.', 'bad_request');
     }
@@ -283,6 +299,7 @@ class Provisioner {
     if (deviceMode !== undefined) patch.device_mode = deviceMode;
     if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
     if (contactDelete !== undefined) patch.contact_delete = contactDelete;
+    if (typeof adAttributes === 'boolean') patch.ad_attributes = adAttributes;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
     if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);
     // AstraCalls conserva lo que no viene en el payload (y el token si va vacío)
