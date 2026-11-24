@@ -211,7 +211,7 @@ class CapiSender {
     const key = `${accountId}:${convId}`;
     if (this.inFlight.has(key)) return 'skip:in_flight';
     const last = this.recent.get(key);
-    if (last && this.now() - last < 10 * 60 * 1000) return 'skip:already_sent';
+    if (last && this.now() - last < 2 * 60 * 1000) return 'skip:already_sent';
     this.inFlight.add(key);
     try {
       const event = this.buildEvent({ accountId, conversationId: convId, cfg, ctwaClid, amount });
@@ -241,7 +241,7 @@ class CapiSender {
       const ok = await this.cw.mergeConversationAttributes(accountId, cfg.cwToken, convId, attrs, { [SENT_ATTR]: stamp }).catch(() => false);
       if (!ok) this.log.warn('capi: venta enviada pero no se pudo marcar capi_enviado', { accountId: Number(accountId), conversationId: convId });
       this.recent.set(key, this.now());
-      for (const [k, t] of this.recent) if (this.now() - t > 10 * 60 * 1000) this.recent.delete(k);
+      for (const [k, t] of this.recent) if (this.now() - t > 2 * 60 * 1000) this.recent.delete(k);
       this.log.info('capi: venta enviada a Meta', { accountId: Number(accountId), conversationId: convId, test: !!cfg.testEventCode });
       return 'sent';
     } finally {
