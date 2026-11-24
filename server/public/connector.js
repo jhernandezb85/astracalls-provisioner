@@ -270,7 +270,6 @@
     { value: 'delete', label: 'Eliminarlo también en el CRM' }
   ];
   var DELETE_HINT = 'Lo que tú eliminas para todos (en el celular o en el CRM) se elimina en ambos lados. WhatsApp solo permite eliminar durante unos 2 días.';
-  var ADS_HINT = 'Cuando un cliente llega por un anuncio de Facebook o Instagram, se guardan en la conversación el anuncio y su Click ID. Sirve para avisarle a Meta quién compró. Al encenderla se crean en la cuenta los atributos "Anuncio · …".';
   var MIRROR_HINT ='Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
@@ -673,7 +672,6 @@
     var rec = el('input', { type: 'checkbox' }); rec.checked = !!data.recording;
     var mirror = el('input', { type: 'checkbox' }); mirror.checked = !!data.mirrorApi;
     var ticks = el('input', { type: 'checkbox' }); ticks.checked = !!data.readReceipts;
-    var ads = el('input', { type: 'checkbox' }); ads.checked = !!data.adAttributes;
     var hist = el('input', { type: 'checkbox' }); hist.checked = !!data.importHistory;
     var days = daysSelect('astra-inbox-days', data.importHistoryDays || 30);
     var saved = el('div', { class: 'astra-saved' });
@@ -720,7 +718,7 @@
       delBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
     });
     delBox.appendChild(el('div', { class: 'astra-h astra-ind', text: DELETE_HINT }));
-    var inputs = [rec, ticks, ads, mirror, hist, days].concat(modeRadios, delRadios);
+    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios, delRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -737,7 +735,6 @@
     rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
     mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
     ticks.addEventListener('change', function () { save({ readReceipts: ticks.checked }, function () { ticks.checked = !ticks.checked; }); });
-    ads.addEventListener('change', function () { save({ adAttributes: ads.checked }, function () { ads.checked = !ads.checked; }); });
     hist.addEventListener('change', function () {
       save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
     });
@@ -835,8 +832,6 @@
       modeBox,
       el('div', { class: 'astra-sub', text: 'Cuando el cliente elimina un mensaje en WhatsApp:' }),
       delBox,
-      el('label', { class: 'astra-ck' }, [ads, 'Guardar los datos de los anuncios (para la API de conversiones de Meta)']),
-      el('div', { class: 'astra-h astra-ind', text: ADS_HINT }),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),
@@ -885,8 +880,167 @@
     tab.appendChild(buildInboxCard(accountId, inboxId, inboxState.data)); // al final de "Configuración"
   }
 
+  // ======================================================================
+  //  Integraciones: tarjeta "Meta · API de conversiones" (de la cuenta)
+  // ======================================================================
+  var CAPI_RE = /^\/app\/accounts\/(\d+)\/settings\/integrations\/?$/;
+  var CAPI_ATTR = 'data-astra-capi';
+  var capiState = { acct: 0, status: '', data: null };
+  var CAPI_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><path d="M15.5 8.5L21 3M18 3h3v3"/></svg>';
+  var CAPI_DESC = 'Guarda en cada conversación el anuncio de Facebook o Instagram por el que llegó el cliente, para avisarle a Meta quién compró y que tus anuncios busquen más clientes así.';
+
+  function findIntegrationsGrid() {
+    var imgs = document.querySelectorAll('img[src*="/dashboard/images/integrations/"]');
+    for (var i = 0; i < imgs.length; i++) {
+      var n = imgs[i];
+      while (n && n.parentElement && n.parentElement !== document.body) {
+        var parent = n.parentElement, cards = 0;
+        for (var j = 0; j < parent.children.length; j++) {
+          if (parent.children[j].querySelector('img[src*="/dashboard/images/integrations/"]')) cards++;
+        }
+        if (cards >= 3) return parent;
+        n = parent;
+      }
+    }
+    return null;
+  }
+
+  function cardLabel(card) {
+    var img = card.querySelector('img');
+    var header = img && img.parentElement && img.parentElement.parentElement;
+    return header && header.children.length > 1 ? header.children[1] : null;
+  }
+
+  function isEnabledLabel(lab) {
+    return !!lab && /teal|green/.test(lab.className + ' ' + lab.innerHTML);
+  }
+
+  function buildCapiCard(grid, accountId, enabled) {
+    var tpl = null, any = null, i;
+    for (i = 0; i < grid.children.length; i++) {
+      var c = grid.children[i];
+      if (c.hasAttribute(CAPI_ATTR) || !c.querySelector('img') || !c.querySelector('p')) continue;
+      if (!any) any = c;
+      if (isEnabledLabel(cardLabel(c)) === enabled) { tpl = c; break; }
+    }
+    tpl = tpl || any;
+    if (!tpl) return null;
+    var card = tpl.cloneNode(true);
+    card.setAttribute(CAPI_ATTR, String(accountId));
+    var imgs = card.querySelectorAll('img');
+    var logoBox = imgs[0] && imgs[0].parentElement;
+    if (logoBox) {
+      logoBox.textContent = '';
+      var ic = el('div', { style: 'width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(127,127,127,.25)' });
+      ic.insertAdjacentHTML('beforeend', CAPI_ICON);
+      logoBox.appendChild(ic);
+    }
+    var lab = cardLabel(card);
+    if (lab) {
+      var leaf = lab;
+      while (leaf.children && leaf.children.length === 1) leaf = leaf.children[0];
+      if (leaf.children && leaf.children.length === 0) leaf.textContent = enabled ? 'Activado' : 'Deshabilitado';
+    }
+    var name = card.querySelector('.text-heading-3') || (function () {
+      var sp = card.querySelectorAll('span');
+      for (var k = 0; k < sp.length; k++) if (!lab || !lab.contains(sp[k])) return sp[k];
+      return null;
+    })();
+    if (name) name.textContent = 'Meta · API de conversiones';
+    var p = card.querySelector('p');
+    if (p) p.textContent = CAPI_DESC;
+    Array.prototype.slice.call(card.querySelectorAll('a')).forEach(function (a) {
+      a.setAttribute('href', '#');
+      a.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); openCapiModal(accountId); });
+    });
+    return card;
+  }
+
+  function removeCapiCards() {
+    Array.prototype.slice.call(document.querySelectorAll('[' + CAPI_ATTR + ']')).forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+  }
+
+  function loadCapi(accountId) {
+    capiState = { acct: accountId, status: 'loading', data: null };
+    api('GET', '/account/capi?accountId=' + accountId).then(function (d) {
+      if (capiState.acct !== accountId) return;
+      capiState.status = 'ok'; capiState.data = d;
+      removeCapiCards(); schedule();
+    }, function () {
+      if (capiState.acct !== accountId) return;
+      capiState.status = 'hidden'; // no es administrador o hubo un error: no se muestra
+    });
+  }
+
+  function tryInjectCapi() {
+    var m = location.pathname.match(CAPI_RE);
+    if (!m) { removeCapiCards(); if (capiState.acct) capiState = { acct: 0, status: '', data: null }; return; }
+    var accountId = Number(m[1]);
+    if (capiState.acct !== accountId) { loadCapi(accountId); return; }
+    if (capiState.status !== 'ok') return;
+    var grid = findIntegrationsGrid();
+    if (!grid || grid.querySelector('[' + CAPI_ATTR + ']')) return;
+    removeCapiCards();
+    var card = buildCapiCard(grid, accountId, !!capiState.data.enabled);
+    if (card) grid.appendChild(card);
+  }
+
+  function openCapiModal(accountId) {
+    if (modal) return;
+    var ov = el('div', { class: 'astra-ov', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Meta · API de conversiones' });
+    var box = el('div', { class: 'astra-md' + (isDark() ? ' astra-dark' : '') });
+    ov.appendChild(box);
+    ov.addEventListener('click', function (e) { if (e.target === ov && modal && modal.canEsc) closeModal(); });
+    ensureStyle();
+    document.body.appendChild(ov);
+    modal = { root: ov, box: box, accountId: accountId, stopped: false, timer: null };
+    modal.onKey = function (e) { if (e.key === 'Escape' && modal && modal.canEsc) { e.stopPropagation(); closeModal(); } };
+    document.addEventListener('keydown', modal.onKey, true);
+    renderCapi(capiState.data || { enabled: false, attributes: [] });
+  }
+
+  function renderCapi(d) {
+    var err = el('div', { class: 'astra-err', style: 'display:none' });
+    var list = el('ul', { style: 'margin:8px 0 0;padding-left:20px;color:var(--a-mut)' });
+    (d.attributes || []).forEach(function (a) {
+      list.appendChild(el('li', null, [a.name + ' ', el('code', { text: a.key }), a.present ? ' ✓' : '']));
+    });
+    var close = el('button', { class: 'astra-b', type: 'button', text: d.enabled ? 'Cerrar' : 'Cancelar', onclick: closeModal });
+    var nodes = [
+      el('h2', { text: 'Meta · API de conversiones' }),
+      el('p', { text: 'Cuando un cliente llega por un anuncio de Facebook o Instagram que abre WhatsApp, se guardan en la conversación el anuncio y su Click ID. Con eso se le puede avisar a Meta quién compró, para que tus anuncios busquen más clientes como esos.' }),
+      el('div', { class: 'astra-sub', text: 'Atributos de la conversación' }),
+      list,
+      el('div', { class: 'astra-h', text: 'Funciona en todas las bandejas de WhatsApp + Llamadas de esta cuenta. Se ven en el panel derecho de cada conversación, en "Atributos de la conversación".' })
+    ];
+    if (d.enabled) {
+      nodes.push(el('div', { class: 'astra-warn' }, [el('strong', { text: 'Activado. ' }), 'Para desactivarlo, borra los atributos "Anuncio · …" en Ajustes → Atributos personalizados.']));
+      nodes.push(el('div', { class: 'astra-row' }, [close]));
+    } else {
+      var go = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Activar' });
+      go.addEventListener('click', function () {
+        go.disabled = true; close.disabled = true; go.textContent = 'Activando…'; err.style.display = 'none';
+        modal.canEsc = false;
+        api('POST', '/account/capi', { accountId: modal.accountId }).then(function (r) {
+          capiState.data = r; removeCapiCards(); schedule();
+          if (modal) renderCapi(r);
+        }, function (e) {
+          if (!modal) return;
+          modal.canEsc = true;
+          go.disabled = false; close.disabled = false; go.textContent = 'Activar';
+          err.textContent = e.message; err.style.display = '';
+        });
+      });
+      nodes.push(err);
+      nodes.push(el('div', { class: 'astra-row' }, [close, go]));
+    }
+    setBox(nodes, true);
+  }
+
   function tryInject() {
     try { tryInjectInbox(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
+    try { tryInjectCapi(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
     try {
       var m = location.pathname.match(PATH_RE);
       if (!m) return;
@@ -925,7 +1079,7 @@
       new MutationObserver(function () {
         try {
           var p = window.location.pathname;
-          if (PATH_RE.test(p) || INBOX_RE.test(p) || document.querySelector('[' + INBOX_ATTR + ']')) schedule();
+          if (PATH_RE.test(p) || INBOX_RE.test(p) || CAPI_RE.test(p) || document.querySelector('[' + INBOX_ATTR + '],[' + CAPI_ATTR + ']')) schedule();
         } catch (e) { /* ventana cerrada */ }
       })
         .observe(document.body, { childList: true, subtree: true });

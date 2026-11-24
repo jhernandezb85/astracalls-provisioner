@@ -123,9 +123,22 @@ function createApp({ cfg, provisioner, log }) {
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
       contactDelete: typeof b.contactDelete === 'string' ? b.contactDelete : undefined,
-      adAttributes: bool(b.adAttributes),
       importHistoryDays: b.importHistoryDays,
     }));
+  }));
+
+  // ---- integración "Meta · API de conversiones" (cuenta) ----
+  api.get('/account/capi', wrap(async (req, res) => {
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.capiStatus(devise, req.query.accountId));
+  }));
+
+  api.post('/account/capi', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.enableCapi(devise, (req.body || {}).accountId));
   }));
 
   // ---- llaves MCP de la bandeja (conectar una IA a ese número) ----

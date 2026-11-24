@@ -16,8 +16,9 @@ function hostOf(u) {
 const DEVICE_MODES = ['open', 'keep', 'note'];
 // cuando el cliente elimina un mensaje: conservar con nota (defecto) o eliminar
 const CONTACT_DELETE = ['note', 'delete'];
-// atributos de conversación con los datos del anuncio (para CAPI); solo se crean
-// cuando el administrador enciende la opción en la tarjeta de la bandeja
+// atributos de conversación con los datos del anuncio (para CAPI). Son de la CUENTA:
+// se crean desde la tarjeta "Meta · API de conversiones" en Integraciones, y
+// AstraCalls los llena en cualquier bandeja de la cuenta si existen.
 const AD_ATTRIBUTES = [
   { key: 'ctwa_clid', name: 'Anuncio · Click ID', type: 'text', description: 'Click ID del anuncio de WhatsApp (ctwa_clid), para la API de conversiones de Meta' },
   { key: 'ad_id', name: 'Anuncio · ID', type: 'text', description: 'ID del anuncio por el que llegó el contacto' },
@@ -272,21 +273,14 @@ class Provisioner {
       deviceBot: !!cfg.device_bot,
       readReceipts: cfg.read_receipts !== false,
       contactDelete: CONTACT_DELETE.includes(cfg.contact_delete) ? cfg.contact_delete : 'note',
-      adAttributes: !!cfg.ad_attributes,
       importHistory: !!cfg.import_history,
       importHistoryDays: clampDays(cfg.import_history_days),
       mcpEndpoint: this.ac.mcpEndpoint(),
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, adAttributes, importHistory, importHistoryDays }) {
-    const { sid, acct, token } = await this._resolveInbox(devise, accountId, inboxId);
-    if (adAttributes === true) {
-      // primero los atributos en la cuenta: sin ellos los datos no se ven en Chatwoot
-      let ok = false;
-      try { ok = await this.cw.ensureConversationAttributes(acct, token, AD_ATTRIBUTES); } catch { ok = false; }
-      if (!ok) throw new HttpError(502, 'No se pudieron crear los atributos del anuncio en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
-    }
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, importHistory, importHistoryDays }) {
+    const { sid } = await this._resolveInbox(devise, accountId, inboxId);
     if (deviceMode !== undefined && !DEVICE_MODES.includes(deviceMode)) {
       throw new HttpError(400, 'Opción no válida para lo escrito desde el celular.', 'bad_request');
     }
@@ -299,7 +293,6 @@ class Provisioner {
     if (deviceMode !== undefined) patch.device_mode = deviceMode;
     if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
     if (contactDelete !== undefined) patch.contact_delete = contactDelete;
-    if (typeof adAttributes === 'boolean') patch.ad_attributes = adAttributes;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
     if (importHistoryDays !== undefined) patch.import_history_days = clampDays(importHistoryDays);
     // AstraCalls conserva lo que no viene en el payload (y el token si va vacío)
@@ -307,6 +300,39 @@ class Provisioner {
     this.log.info('configuración de bandeja actualizada', { accountId: Number(accountId), inboxId: Number(inboxId), fields: Object.keys(patch).concat(typeof recording === 'boolean' ? ['recording'] : []) });
     const cfg = await this.ac.getChatwootCfg(sid);
     return this._settingsView(sid, cfg || {});
+  }
+
+  // ---------- integración "Meta · API de conversiones" (cuenta) ----------
+
+  async _adminToken(devise, accountId) {
+    const acct = Number(accountId);
+    if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
+    const profile = await this._profile(devise);
+    this._requireAdmin(profile, acct);
+    return { acct, token: profile.access_token };
+  }
+
+  /** Estado: activado si la cuenta tiene todos los atributos del anuncio. */
+  async capiStatus(devise, accountId) {
+    const { acct, token } = await this._adminToken(devise, accountId);
+    const have = await this.cw.conversationAttributeKeys(acct, token);
+    if (!have) throw new HttpError(502, 'No se pudo leer la configuración de Chatwoot. Intenta de nuevo.', 'chatwoot_error');
+    return this._capiView(have);
+  }
+
+  /** Crea en la cuenta los atributos del anuncio que falten. */
+  async enableCapi(devise, accountId) {
+    const { acct, token } = await this._adminToken(devise, accountId);
+    let ok = false;
+    try { ok = await this.cw.ensureConversationAttributes(acct, token, AD_ATTRIBUTES); } catch { ok = false; }
+    if (!ok) throw new HttpError(502, 'No se pudieron crear los atributos del anuncio en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
+    this.log.info('atributos de anuncio creados', { accountId: acct });
+    return this._capiView(await this.cw.conversationAttributeKeys(acct, token) || new Set(AD_ATTRIBUTES.map((d) => d.key)));
+  }
+
+  _capiView(have) {
+    const attributes = AD_ATTRIBUTES.map((d) => ({ key: d.key, name: d.name, present: have.has(d.key) }));
+    return { enabled: attributes.every((a) => a.present), attributes };
   }
 
   async listMcpKeys(devise, accountId, inboxId) {

@@ -95,13 +95,19 @@ class ChatwootClient {
    * Crea en la cuenta los atributos de conversación que falten (por attribute_key).
    * defs: [{ key, name, type, description }]. Devuelve true si al final existen todos.
    */
-  async ensureConversationAttributes(accountId, accessToken, defs) {
-    const h = { api_access_token: accessToken };
-    const list = await this._json('GET', `/api/v1/accounts/${accountId}/custom_attribute_definitions?attribute_model=conversation_attribute`, h);
-    if (!list.ok) return false;
-    const have = new Set((Array.isArray(list.data) ? list.data : [])
+  /** Claves de los atributos de conversación de la cuenta (Set), o null si falla. */
+  async conversationAttributeKeys(accountId, accessToken) {
+    const list = await this._json('GET', `/api/v1/accounts/${accountId}/custom_attribute_definitions?attribute_model=conversation_attribute`, { api_access_token: accessToken });
+    if (!list.ok) return null;
+    return new Set((Array.isArray(list.data) ? list.data : [])
       .filter((d) => d && (d.attribute_model === 'conversation_attribute' || d.attribute_model === 0))
       .map((d) => d.attribute_key));
+  }
+
+  async ensureConversationAttributes(accountId, accessToken, defs) {
+    const h = { api_access_token: accessToken };
+    const have = await this.conversationAttributeKeys(accountId, accessToken);
+    if (!have) return false;
     let ok = true;
     for (const d of defs) {
       if (have.has(d.key)) continue;

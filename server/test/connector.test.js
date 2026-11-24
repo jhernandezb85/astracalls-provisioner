@@ -224,11 +224,7 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   keepNote.checked = true; keepNote.dispatchEvent(new dom.window.Event('change'));
   await tick(80);
   assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.contactDelete === 'note'));
-  const adsBox = boxFor(/datos de los anuncios/);
-  assert.equal(adsBox.checked, false, 'apagada por defecto');
-  adsBox.checked = true; adsBox.dispatchEvent(new dom.window.Event('change'));
-  await tick(80);
-  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.adAttributes === true));
+  assert.doesNotMatch(card.textContent, /datos de los anuncios/, 'los anuncios son de la cuenta, no de la bandeja');
 
   // crear llave MCP: el botón está bloqueado hasta aceptar el aviso
   const createBtn = [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave');
@@ -326,4 +322,54 @@ test('flujo completo con cookie devise: envía headers, muestra QR y luego ¡Lis
   await tick(2300); // siguiente sondeo
   assert.match(d.querySelector('.astra-md').textContent, /¡Listo!/);
   dom.window.close();
+});
+
+// página de Integraciones (marcado de IntegrationItem.vue)
+const INTEGRATION = (id, name, enabled) => `<div class="flex flex-col flex-1 p-4 bg-n-card rounded-xl">
+  <div class="flex items-start justify-between"><div class="flex h-12 w-12 mb-2"><img src="/dashboard/images/integrations/${id}.png" alt="${name}"><img src="/dashboard/images/integrations/${id}-dark.png" alt="${name}"></div>
+  <span class="label ${enabled ? 'bg-n-teal-3 text-n-teal-11' : 'bg-n-slate-3 text-n-slate-11'}">${enabled ? 'Activado' : 'Deshabilitado'}</span></div>
+  <div class="flex flex-col m-0 flex-1"><div class="font-medium mb-2 flex justify-between items-center"><span class="text-heading-3">${name}</span>
+  <a href="/app/accounts/1/settings/integrations/${id}"><button>Configurar</button></a></div><p>Descripción de ${name}</p></div></div>`;
+const INTEGRATIONS_PAGE = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="grid">${INTEGRATION('webhook', 'Webhook', false)}${INTEGRATION('openai', 'OpenAI', true)}${INTEGRATION('dialogflow', 'Dialogflow', false)}</div>`;
+const CAPI_OFF = { enabled: false, attributes: [{ key: 'ctwa_clid', name: 'Anuncio · Click ID', present: false }, { key: 'ad_id', name: 'Anuncio · ID', present: false }] };
+const CAPI_ON = { enabled: true, attributes: CAPI_OFF.attributes.map((a) => ({ ...a, present: true })) };
+
+test('Integraciones: tarjeta "Meta · API de conversiones" y activar', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/1/settings/integrations', INTEGRATIONS_PAGE, COOKIE);
+  const calls = mockApi(dom, {
+    'GET /account/capi': () => [200, CAPI_OFF],
+    'POST /account/capi': () => [200, CAPI_ON],
+  });
+  const d = dom.window.document;
+  d.body.appendChild(d.createElement('i'));
+  await tick(150);
+  const card = d.querySelector('[data-astra-capi="1"]');
+  assert.ok(card, 'tarjeta insertada');
+  assert.equal(d.getElementById('grid').lastElementChild, card, 'al final de la rejilla');
+  assert.match(card.textContent, /Meta · API de conversiones/);
+  assert.match(card.textContent, /Deshabilitado/);
+  assert.doesNotMatch(card.textContent, /Webhook|OpenAI|Dialogflow/, 'sin textos de la tarjeta copiada');
+  assert.equal(card.querySelectorAll('img').length, 0, 'icono propio');
+  assert.equal(calls[0].url, 'https://prov.example.com/account/capi?accountId=1');
+  // abrir y activar
+  card.querySelector('a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.equal(dom.window.location.pathname, '/app/accounts/1/settings/integrations', 'no navega');
+  const md = d.querySelector('.astra-md');
+  assert.ok(md, 'abre la ventana');
+  assert.match(md.textContent, /Click ID/);
+  const go = [...md.querySelectorAll('button')].find((b) => b.textContent === 'Activar');
+  go.click();
+  await tick(150);
+  assert.ok(calls.some((c) => c.key === 'POST /account/capi' && c.body.accountId === 1));
+  assert.match(d.querySelector('.astra-md').textContent, /Activado/);
+  assert.match(d.querySelector('[data-astra-capi="1"]').textContent, /Activado/, 'la tarjeta cambia de estado');
+});
+
+test('Integraciones: si no es administrador no aparece la tarjeta', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/1/settings/integrations', INTEGRATIONS_PAGE, COOKIE);
+  mockApi(dom, { 'GET /account/capi': () => [403, { error: 'no' }] });
+  const d = dom.window.document;
+  d.body.appendChild(d.createElement('i'));
+  await tick(150);
+  assert.equal(d.querySelector('[data-astra-capi]'), null);
 });

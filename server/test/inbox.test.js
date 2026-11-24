@@ -105,7 +105,7 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
-      mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true, contactDelete: 'note', adAttributes: false,
+      mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true, contactDelete: 'note',
       importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
 
@@ -120,22 +120,6 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(del.json.contactDelete, 'delete');
     assert.equal(s.ac.state.sessions.get('sess1').chatwoot.contact_delete, 'delete');
 
-    // datos de anuncios: al encender se crean los atributos en la cuenta (una sola vez)
-    const cw = s.cw.state;
-    cw.failAttrs = true;
-    assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, adAttributes: true } })).status, 502);
-    assert.equal(s.ac.state.sessions.get('sess1').chatwoot.ad_attributes, undefined, 'sin atributos no se enciende');
-    cw.failAttrs = false;
-    const ads = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, adAttributes: true } });
-    assert.equal(ads.status, 200);
-    assert.equal(ads.json.adAttributes, true);
-    assert.deepEqual(cw.attrDefs.map((d) => d.attribute_key), ['ctwa_clid', 'ad_id', 'ad_title', 'ad_source', 'ad_url']);
-    assert.ok(cw.attrDefs.every((d) => d.attribute_model === 'conversation_attribute' && d.account_id === 7));
-    await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, adAttributes: true } });
-    assert.equal(cw.attrDefs.length, 5, 'no duplica');
-    const off = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, adAttributes: false } });
-    assert.equal(off.json.adAttributes, false);
-    assert.equal(cw.attrDefs.length, 5, 'apagar no borra los atributos');
     assert.equal(r.json.readReceipts, false);
     assert.equal(r.json.importHistory, true);
     assert.equal(r.json.importHistoryDays, 7);
@@ -145,6 +129,37 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(stored.account_token, USER_TOKEN);
     assert.equal(stored.inbox_id, 100);
     assert.equal(stored.url, s.cfg.chatwootUrl);
+  } finally { await s.close(); }
+});
+
+test('Meta · API de conversiones: atributos del anuncio en la cuenta', async () => {
+  const s = await setup({ cwOpts: { users: {
+    'admin@example.com': { id: 1, role: 'administrator', accountId: 7, token: USER_TOKEN },
+    'agente@example.com': { id: 2, role: 'agent', accountId: 7, token: USER_TOKEN },
+  } } });
+  try {
+    const cw = s.cw.state;
+    let r = await s.call('GET', '/account/capi?accountId=7');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.enabled, false);
+    assert.deepEqual(r.json.attributes.map((a) => a.key), ['ctwa_clid', 'ad_id', 'ad_title', 'ad_source', 'ad_url']);
+    // si Chatwoot falla, error claro
+    cw.failAttrs = true;
+    assert.equal((await s.call('POST', '/account/capi', { body: { accountId: 7 } })).status, 502);
+    cw.failAttrs = false;
+    r = await s.call('POST', '/account/capi', { body: { accountId: 7 } });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.enabled, true);
+    assert.ok(cw.attrDefs.every((d) => d.attribute_model === 'conversation_attribute' && d.account_id === 7));
+    assert.equal(cw.attrDefs.find((d) => d.attribute_key === 'ad_url').attribute_display_type, 'link');
+    await s.call('POST', '/account/capi', { body: { accountId: 7 } });
+    assert.equal(cw.attrDefs.length, 5, 'no duplica');
+    assert.equal((await s.call('GET', '/account/capi?accountId=7')).json.enabled, true);
+    // solo administradores
+    const agent = { ...DEVISE, uid: 'agente@example.com' };
+    assert.equal((await s.call('GET', '/account/capi?accountId=7', { devise: agent })).status, 403);
+    assert.equal((await s.call('POST', '/account/capi', { body: { accountId: 7 }, devise: agent })).status, 403);
+    assert.equal((await s.call('GET', '/account/capi?accountId=8')).status, 403, 'otra cuenta');
   } finally { await s.close(); }
 });
 
