@@ -41,6 +41,9 @@ deploy/compose-snippet.yml   Servicio a añadir al stack de AstraCalls en Coolif
 | `CHATWOOT_URL` | **sí** | URL de Chatwoot (la usa el provisioner y se guarda en la config de Chatwoot de AstraCalls). |
 | `ALLOWED_ORIGIN` | **sí** | Único origen permitido por CORS (el de Chatwoot, sin `/` final). |
 | `ALLOWED_ACCOUNT_IDS` | no | Lista de cuentas habilitadas separadas por comas (ej. `1,7`). Si está definida y la cuenta no figura → **403** "Esta cuenta no tiene habilitado WhatsApp + Llamadas. Contacta a soporte.". Vacía = todas permitidas. |
+| `CAPI_SECRET` | no | Llave para cifrar los datos de Meta (API de conversiones) de cada cuenta. Sin ella, la sección "Conexión con Meta" queda desactivada. Una cadena aleatoria larga; si se cambia, hay que volver a guardar la conexión en cada cuenta. |
+| `DATA_DIR` | no (`/data`) | Carpeta persistente donde se guarda `capi.json` (tokens cifrados). Montar un volumen ahí. |
+| `PUBLIC_URL` | no | URL pública del provisioner, usada para el webhook de CAPI que se crea en cada cuenta de Chatwoot (ej. `https://provision.example.com`). Si falta, se deduce de la petición. |
 | `MAX_SESSIONS_PER_ACCOUNT` | no (1) | Máximo de números por cuenta. Se cuentan las bandejas de la cuenta (`GET /api/v1/accounts/{id}/inboxes`, con el token del usuario) cuyo `webhook_url` empieza con `ASTRACALLS_PUBLIC_URL`. Si ya se alcanzó → **409** "Alcanzaste el límite de números de tu plan.". |
 | `MCP_KEYS_PER_INBOX` | no (1) | Llaves MCP que el cliente puede crear por bandeja desde Chatwoot. |
 | `PORT` | no (3000) | Puerto del servicio. |

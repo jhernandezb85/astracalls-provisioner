@@ -123,6 +123,50 @@ class ChatwootClient {
     return ok;
   }
 
+  /** Nota privada en una conversación. */
+  async postPrivateNote(accountId, accessToken, conversationId, content) {
+    const r = await this._json('POST', `/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`,
+      { api_access_token: accessToken }, { content, private: true, message_type: 'outgoing' });
+    return r.ok;
+  }
+
+  /**
+   * Agrega atributos a la conversación conservando los que ya tiene (el endpoint
+   * de Chatwoot reemplaza el conjunto entero). `current` son los atributos
+   * actuales (del webhook); se releen de la API si se puede.
+   */
+  async mergeConversationAttributes(accountId, accessToken, conversationId, current, add) {
+    const h = { api_access_token: accessToken };
+    let base = current || {};
+    const cur = await this._json('GET', `/api/v1/accounts/${accountId}/conversations/${conversationId}`, h);
+    if (cur.ok && cur.data && cur.data.custom_attributes && typeof cur.data.custom_attributes === 'object') base = cur.data.custom_attributes;
+    const r = await this._json('POST', `/api/v1/accounts/${accountId}/conversations/${conversationId}/custom_attributes`, h,
+      { custom_attributes: { ...base, ...add } });
+    return r.ok;
+  }
+
+  /**
+   * Webhook de la cuenta hacia `url` con los eventos dados. Reemplaza uno anterior
+   * del mismo origen+ruta base (`prefix`) para no dejar webhooks huérfanos al
+   * cambiar el secreto. Devuelve true si quedó creado.
+   */
+  async ensureAccountWebhook(accountId, accessToken, { url, prefix, subscriptions }) {
+    const h = { api_access_token: accessToken };
+    const list = await this._json('GET', `/api/v1/accounts/${accountId}/webhooks`, h);
+    if (!list.ok) return false;
+    const hooks = (list.data && list.data.payload && Array.isArray(list.data.payload.webhooks)) ? list.data.payload.webhooks
+      : (Array.isArray(list.data && list.data.payload) ? list.data.payload : []);
+    let found = false;
+    for (const w of hooks) {
+      if (!w || typeof w.url !== 'string' || !w.url.startsWith(prefix)) continue;
+      if (w.url === url && !found) { found = true; continue; }
+      await this._json('DELETE', `/api/v1/accounts/${accountId}/webhooks/${w.id}`, h);
+    }
+    if (found) return true;
+    const r = await this._json('POST', `/api/v1/accounts/${accountId}/webhooks`, h, { webhook: { url, subscriptions } });
+    return r.ok;
+  }
+
   async deleteInbox(accountId, accessToken, inboxId) {
     const r = await this._json('DELETE', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
     return r.ok || r.status === 404;

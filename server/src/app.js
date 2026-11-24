@@ -27,7 +27,7 @@ function makeLimiter(max, windowMs, now = () => Date.now()) {
   return check;
 }
 
-function createApp({ cfg, provisioner, log }) {
+function createApp({ cfg, provisioner, log, capiSender }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', cfg.trustProxy);
@@ -63,6 +63,17 @@ function createApp({ cfg, provisioner, log }) {
   }));
 
   app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+  // Webhook de la cuenta de Chatwoot para CAPI (sin CORS: lo llama Chatwoot).
+  // El secreto va en la ruta; se responde enseguida y se procesa aparte.
+  const limHook = makeLimiter(600, 60000);
+  app.post('/capi/hook/:acct/:secret', express.json({ limit: '1mb' }), (req, res) => {
+    if (!limHook(req.params.acct)) return res.status(429).end();
+    res.status(204).end();
+    if (!capiSender) return;
+    capiSender.handle(Number(req.params.acct), req.params.secret, req.body)
+      .catch((e) => log.error('capi: error al procesar webhook', { message: e && e.message }));
+  });
 
   // CORS estricto: solo el origen de Chatwoot
   const api = express.Router();
@@ -142,6 +153,14 @@ function createApp({ cfg, provisioner, log }) {
     res.json(await provisioner.enableCapi(devise, b.accountId, b.extras));
   }));
 
+  api.post('/account/capi/meta', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    const b = req.body || {};
+    res.json(await provisioner.saveCapiMeta(devise, b.accountId, b, `${req.protocol}://${req.get('host')}`));
+  }));
+
   // ---- llaves MCP de la bandeja (conectar una IA a ese número) ----
   api.get('/inbox/mcp-keys', wrap(async (req, res) => {
     readLimit(req);
@@ -186,7 +205,7 @@ function createApp({ cfg, provisioner, log }) {
     res.status(500).json({ error: 'Error interno del servidor.', code: 'internal' });
   });
 
-  app.close = () => [limIpProvision, limAccProvision, limIpStatus, limIdStatus, limIpWrite].forEach((l) => l.close());
+  app.close = () => [limIpProvision, limAccProvision, limIpStatus, limIdStatus, limIpWrite, limHook].forEach((l) => l.close());
   return app;
 }
 

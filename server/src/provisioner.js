@@ -1,6 +1,7 @@
 'use strict';
 
 const { HttpError, normalizePhone, sanitizeInboxName, sha256, newId } = require('./util');
+const { cleanCapiFields, SENT_ATTR } = require('./capi');
 
 /** Días de historial permitidos en la UI: 7, 30 o 90 (por defecto 30). */
 function clampDays(v) {
@@ -29,6 +30,8 @@ const AD_ATTRIBUTES = [
   { key: 'anuncio_origen', name: 'Anuncio · Origen', type: 'text', description: 'Origen del anuncio (ej. FB_Ads)' },
   { key: 'anuncio_enlace', name: 'Anuncio · Enlace', type: 'link', description: 'Enlace del anuncio' },
 ];
+// marca que pone el provisioner cuando ya avisó la venta a Meta (evita reenviarla)
+const SENT_ATTR_DEF = { key: SENT_ATTR, name: 'Meta · Venta enviada', type: 'text', description: 'Fecha y monto de la venta avisada a Meta. Bórralo y vuelve a poner la etiqueta para reenviarla.' };
 /** Agent Bot de la cuenta con el que AstraCalls publica lo escrito desde el celular. */
 const DEVICE_BOT = { name: 'WhatsApp (celular)', description: 'Mensajes escritos desde el celular conectado a WhatsApp + Llamadas.' };
 const DEVICE_TITLE = '📱 Enviado desde el celular';
@@ -41,8 +44,10 @@ class Provisioner {
   /**
    * @param {object} deps { cfg, chatwoot, astracalls, log, now? }
    */
-  constructor({ cfg, chatwoot, astracalls, log, now }) {
+  constructor({ cfg, chatwoot, astracalls, log, now, capiStore, capiSender }) {
     this.cfg = cfg;
+    this.capiStore = capiStore || null;
+    this.capiSender = capiSender || null;
     this.cw = chatwoot;
     this.ac = astracalls;
     this.log = log;
@@ -320,7 +325,7 @@ class Provisioner {
     const { acct, token } = await this._adminToken(devise, accountId);
     const have = await this.cw.conversationAttributeKeys(acct, token);
     if (!have) throw new HttpError(502, 'No se pudo leer la configuración de Chatwoot. Intenta de nuevo.', 'chatwoot_error');
-    return this._capiView(have);
+    return this._capiView(have, acct);
   }
 
   /** Crea en la cuenta los atributos del anuncio que falten: los de CAPI y los opcionales marcados. */
@@ -332,12 +337,52 @@ class Provisioner {
     try { ok = await this.cw.ensureConversationAttributes(acct, token, defs); } catch { ok = false; }
     if (!ok) throw new HttpError(502, 'No se pudieron crear los atributos del anuncio en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
     this.log.info('atributos de anuncio creados', { accountId: acct });
-    return this._capiView(await this.cw.conversationAttributeKeys(acct, token) || new Set(defs.map((d) => d.key)));
+    return this._capiView(await this.cw.conversationAttributeKeys(acct, token) || new Set(defs.map((d) => d.key)), acct);
   }
 
-  _capiView(have) {
+  _capiView(have, accountId) {
     const attributes = AD_ATTRIBUTES.map((d) => ({ key: d.key, name: d.name, required: !!d.required, present: have.has(d.key) }));
-    return { enabled: attributes.filter((a) => a.required).every((a) => a.present), attributes };
+    const store = this.capiStore;
+    return {
+      enabled: attributes.filter((a) => a.required).every((a) => a.present),
+      attributes,
+      meta: {
+        available: !!(store && store.ready),
+        config: store && accountId ? store.view(accountId) : null,
+      },
+    };
+  }
+
+  /**
+   * Guarda la conexión con Meta de la cuenta: valida el token contra el dataset,
+   * lo guarda cifrado, crea el atributo capi_enviado y el webhook de la cuenta
+   * que avisa al provisioner cuando cambia una conversación.
+   */
+  async saveCapiMeta(devise, accountId, body, publicBase) {
+    const { acct, token } = await this._adminToken(devise, accountId);
+    const store = this.capiStore;
+    if (!store || !store.ready || !this.capiSender) throw new HttpError(503, 'Falta configurar el servidor (CAPI_SECRET). Avisa a soporte.', 'capi_unavailable');
+    const base = this.cfg.publicUrl || publicBase;
+    if (!base) throw new HttpError(503, 'Falta la dirección pública del servidor (PUBLIC_URL). Avisa a soporte.', 'capi_unavailable');
+    const prev = store.get(acct);
+    const { fields, error } = cleanCapiFields(body || {}, { hasToken: !!(prev && prev.metaToken) });
+    if (error) throw new HttpError(400, error, 'bad_request');
+    const metaToken = fields.metaToken || prev.metaToken;
+    let datasetName = '';
+    try { datasetName = await this.capiSender.verifyDataset(fields.datasetId, metaToken); } catch (e) { throw new HttpError(400, e.message, 'meta_rejected'); }
+    let ok = false;
+    try { ok = await this.cw.ensureConversationAttributes(acct, token, [SENT_ATTR_DEF]); } catch { ok = false; }
+    if (!ok) throw new HttpError(502, 'No se pudo crear el atributo "Meta · Venta enviada" en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
+    const rec = store.set(acct, { ...fields, datasetName, cwToken: token });
+    const prefix = `${base}/capi/hook/${acct}/`;
+    let hook = false;
+    try {
+      hook = await this.cw.ensureAccountWebhook(acct, token, { url: prefix + rec.hookSecret, prefix, subscriptions: ['conversation_updated'] });
+    } catch { hook = false; }
+    if (!hook) throw new HttpError(502, 'Se guardaron los datos, pero no se pudo crear el webhook en Chatwoot. Intenta de nuevo.', 'chatwoot_error');
+    this.log.info('conexión con Meta guardada', { accountId: acct, test: !!fields.testEventCode });
+    const have = await this.cw.conversationAttributeKeys(acct, token) || new Set();
+    return this._capiView(have, acct);
   }
 
   async listMcpKeys(devise, accountId, inboxId) {

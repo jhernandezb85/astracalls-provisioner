@@ -9,6 +9,10 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY src ./src
 COPY public ./public
 
+# datos persistentes (conexión con Meta cifrada); montar un volumen aquí
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
+
 USER node
 EXPOSE 3000
 

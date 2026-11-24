@@ -22,6 +22,9 @@ function load(env = process.env) {
       : null,
     maxSessionsPerAccount: env.MAX_SESSIONS_PER_ACCOUNT === undefined || env.MAX_SESSIONS_PER_ACCOUNT === '' ? 1 : Number(env.MAX_SESSIONS_PER_ACCOUNT),
     mcpKeysPerInbox: Math.max(1, Number(env.MCP_KEYS_PER_INBOX || 1)),
+    dataDir: env.DATA_DIR || '/data',
+    capiSecret: env.CAPI_SECRET || '',
+    publicUrl: trimSlash(env.PUBLIC_URL),
     trustProxy: env.TRUST_PROXY === undefined ? 1 : Number(env.TRUST_PROXY),
   };
   return cfg;

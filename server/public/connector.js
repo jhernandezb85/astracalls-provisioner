@@ -280,8 +280,8 @@
     '.astra-md h2{margin:0 0 4px;font-size:18px;font-weight:600;color:var(--a-fg)}',
     '.astra-md p{margin:0 0 12px;color:var(--a-mut)}',
     '.astra-md label.astra-l{display:block;font-weight:500;margin:12px 0 4px;color:var(--a-fg)}',
-    '.astra-md input[type=text],.astra-md input[type=tel]{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:14px;outline:none}',
-    '.astra-md input[type=text]:focus,.astra-md input[type=tel]:focus{border-color:var(--a-ac)}',
+    '.astra-md input[type=text],.astra-md input[type=tel],.astra-md input[type=password]{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font-size:14px;outline:none}',
+    '.astra-md input[type=text]:focus,.astra-md input[type=tel]:focus,.astra-md input[type=password]:focus{border-color:var(--a-ac)}',
     '.astra-md .astra-h{font-size:12px;color:var(--a-mut);margin-top:4px}',
     '.astra-md .astra-ck{display:flex;gap:8px;align-items:center;margin-top:14px;cursor:pointer;color:var(--a-fg)}',
     '.astra-md .astra-opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--a-bd);border-radius:10px;margin-top:8px;cursor:pointer;color:var(--a-fg)}',
@@ -1051,9 +1051,68 @@
         err.textContent = e.message; err.style.display = '';
       });
     });
+    if (d.enabled) metaSection(d).forEach(function (n) { nodes.push(n); });
     nodes.push(err);
     nodes.push(el('div', { class: 'astra-row' }, d.enabled && !extras.length ? [close] : [close, go]));
     setBox(nodes, true);
+  }
+
+  // Conexión con Meta: datos del dataset y token (se guardan cifrados en el servidor).
+  function metaSection(d) {
+    var meta = d.meta || {};
+    var out = [el('div', { class: 'astra-sub', text: 'Conexión con Meta' })];
+    if (!meta.available) {
+      out.push(el('div', { class: 'astra-h', text: 'El servidor todavía no tiene activada la conexión con Meta. Avisa a soporte.' }));
+      return out;
+    }
+    var c = meta.config || {};
+    var field = function (label, input, hint) {
+      var nodes = [el('label', { class: 'astra-l', text: label }), input];
+      if (hint) nodes.push(el('div', { class: 'astra-h', text: hint }));
+      return nodes;
+    };
+    var ds = el('input', { type: 'text', value: c.datasetId || '', placeholder: 'Ej. 1449035617173447', autocomplete: 'off', inputmode: 'numeric' });
+    var waba = el('input', { type: 'text', value: c.wabaId || '', placeholder: 'Ej. 2061295954353574', autocomplete: 'off', inputmode: 'numeric' });
+    var tok = el('input', { type: 'password', value: '', autocomplete: 'new-password',
+      placeholder: c.tokenHint ? 'Guardado (' + c.tokenHint + '). Déjalo vacío para conservarlo' : 'Token del usuario del sistema' });
+    var cur = el('input', { type: 'text', value: c.currency || 'PEN', maxlength: '3', autocomplete: 'off', style: 'text-transform:uppercase' });
+    var lab = el('input', { type: 'text', value: c.saleLabel || 'venta', maxlength: '40', autocomplete: 'off' });
+    var test = el('input', { type: 'text', value: c.testEventCode || '', placeholder: 'Ej. TEST12345 (vacío = ventas reales)', autocomplete: 'off' });
+    var status = el('div', { class: 'astra-h' });
+    if (c.datasetId) {
+      status.textContent = '✅ Conectado' + (c.datasetName ? ' a "' + c.datasetName + '"' : '') + (c.testEventCode ? ' · en modo prueba' : '') + '.';
+    }
+    var mErr = el('div', { class: 'astra-err', style: 'display:none' });
+    var save = el('button', { class: 'astra-b astra-pri', type: 'button', text: c.datasetId ? 'Guardar conexión' : 'Conectar con Meta' });
+    save.addEventListener('click', function () {
+      var txt = save.textContent;
+      save.disabled = true; save.textContent = 'Comprobando con Meta…'; mErr.style.display = 'none';
+      modal.canEsc = false;
+      api('POST', '/account/capi/meta', {
+        accountId: modal.accountId, datasetId: ds.value, wabaId: waba.value, metaToken: tok.value,
+        currency: cur.value, saleLabel: lab.value, testEventCode: test.value
+      }).then(function (r) {
+        capiState.data = r;
+        if (modal) { modal.canEsc = true; renderCapi(r); }
+      }, function (e) {
+        if (!modal) return;
+        modal.canEsc = true;
+        save.disabled = false; save.textContent = txt;
+        mErr.textContent = e.message; mErr.style.display = '';
+      });
+    });
+    out.push(el('div', { class: 'astra-h', text: 'Cuando una conversación que llegó por un anuncio tenga la etiqueta de venta y el monto lleno, se le avisa la compra a Meta una sola vez (queda anotado en "Meta · Venta enviada"). Para reenviarla, borra ese atributo y vuelve a poner la etiqueta.' }));
+    out.push(status);
+    [field('ID del conjunto de datos', ds, 'Administrador de eventos → tu conjunto de datos → Configuración.'),
+      field('ID de la cuenta de WhatsApp Business', waba),
+      field('Token de acceso', tok, 'De un usuario del sistema de tu portafolio comercial, con permiso sobre el conjunto de datos. Se guarda cifrado y no se vuelve a mostrar.'),
+      field('Moneda', cur),
+      field('Etiqueta de venta', lab),
+      field('Código de prueba (opcional)', test, 'Con un código, las ventas se ven en "Probar eventos" y no cuentan como reales. Bórralo para empezar a enviar ventas reales.')
+    ].forEach(function (ns) { ns.forEach(function (n) { out.push(n); }); });
+    out.push(mErr);
+    out.push(el('div', { class: 'astra-row' }, [save]));
+    return out;
   }
 
   function tryInject() {
