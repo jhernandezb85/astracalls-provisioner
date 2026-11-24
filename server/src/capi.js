@@ -211,7 +211,8 @@ class CapiSender {
     const key = `${accountId}:${convId}`;
     if (this.inFlight.has(key)) return 'skip:in_flight';
     const last = this.recent.get(key);
-    if (last && this.now() - last < 2 * 60 * 1000) return 'skip:already_sent';
+    // en modo prueba (código de prueba) se puede reenviar enseguida
+    if (!cfg.testEventCode && last && this.now() - last < 2 * 60 * 1000) return 'skip:already_sent';
     this.inFlight.add(key);
     try {
       const event = this.buildEvent({ accountId, conversationId: convId, cfg, ctwaClid, amount });
