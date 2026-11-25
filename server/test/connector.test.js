@@ -415,7 +415,8 @@ test('el modal permite elegir una bandeja existente y desactiva la importación'
   rOld.checked = true;
   rOld.dispatchEvent(new dom.window.Event('change'));
   assert.equal(d.getElementById('astra-hist').disabled, true);
-  assert.match(d.querySelector('.astra-md').textContent, /historial ya está en el CRM/);
+  assert.match(d.querySelector('.astra-md').textContent, /no es necesario, el historial de esta bandeja ya está en el CRM/);
+  assert.equal(d.getElementById('astra-hist').closest('label').parentNode.style.display, 'none', 'se oculta la opción de importar');
   d.getElementById('astra-phone').value = '5215512345678';
   const go = () => [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Conectar').click();
   go();

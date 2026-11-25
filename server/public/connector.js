@@ -444,7 +444,11 @@
     }
     existing.addEventListener('change', syncExisting);
     var nameBox = el('div', null, [el('label', { class: 'astra-l', for: 'astra-name', text: 'Nombre de la bandeja' }), name]);
-    var histOff = el('div', { class: 'astra-h astra-ind', text: 'No disponible con una bandeja existente: su historial ya está en el CRM.' });
+    var histOff = el('div', { class: 'astra-h', style: 'margin-top:14px', text: 'Importar conversaciones: no es necesario, el historial de esta bandeja ya está en el CRM.' });
+    var histBox = el('div', null, [
+      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
+      el('div', { class: 'astra-h astra-ind', text: 'Llegan con su fecha original, sin reenviar nada a tus contactos. Las conversaciones importadas quedan resueltas y se reabren cuando el contacto vuelve a escribir.' })
+    ]);
     function syncTarget() {
       useExisting = rOld.checked;
       optNew.className = 'astra-opt' + (useExisting ? '' : ' astra-on');
@@ -452,6 +456,7 @@
       existingBox.style.display = useExisting ? '' : 'none';
       nameBox.style.display = useExisting ? 'none' : '';
       histOff.style.display = useExisting ? '' : 'none';
+      histBox.style.display = useExisting ? 'none' : '';
       if (useExisting) hist.checked = false;
       hist.disabled = useExisting;
       histDays.disabled = useExisting || !hist.checked;
@@ -524,8 +529,7 @@
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
-      el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
-      el('div', { class: 'astra-h astra-ind', text: 'Llegan con su fecha original, sin reenviar nada a tus contactos. Las conversaciones importadas quedan resueltas y se reabren cuando el contacto vuelve a escribir.' }),
+      histBox,
       histOff,
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
