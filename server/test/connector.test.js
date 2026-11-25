@@ -428,3 +428,26 @@ test('el modal permite elegir una bandeja existente y desactiva la importación'
   assert.equal(b.importHistory, false);
   dom.window.close();
 });
+
+test('bandeja que viene de otro proveedor: muestra el aviso con alerta', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, COOKIE);
+  await tick();
+  mockApi(dom, {
+    'GET /inbox/available': () => [200, { inboxes: [{ id: 50, name: 'Correo API', otherProvider: false }, { id: 60, name: 'WhatsApp Evo', otherProvider: true }] }],
+  });
+  const d = dom.window.document;
+  d.querySelector('[data-astra-card]').click();
+  await tick(50);
+  const rOld = d.getElementById('astra-target-existing');
+  rOld.checked = true;
+  rOld.dispatchEvent(new dom.window.Event('change'));
+  const sel = d.getElementById('astra-existing');
+  const alert = d.querySelector('.astra-alert');
+  sel.value = '50'; sel.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(alert.style.display, 'none');
+  sel.value = '60'; sel.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(alert.style.display, '');
+  assert.match(alert.textContent, /otro proveedor/);
+  assert.match(alert.textContent, /no se podrá deshacer/);
+  dom.window.close();
+});

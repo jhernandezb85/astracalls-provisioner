@@ -5,6 +5,7 @@ const { load } = require('../src/config');
 const { ChatwootClient } = require('../src/chatwoot');
 const { AstraCallsClient } = require('../src/astracalls');
 const { Provisioner } = require('../src/provisioner');
+const { EvolutionClient } = require('../src/evolution');
 const { createApp } = require('../src/app');
 
 const SECRET_API_KEY = 'SUPER-SECRET-MASTER-KEY';
@@ -176,10 +177,22 @@ async function mockAstraCalls(opts = {}) {
   return { state, url, close: () => { if (state.sse) state.sse.end(); server.closeAllConnections && server.closeAllConnections(); server.close(); } };
 }
 
+/** Evolution API simulado: registra los logout. */
+async function mockEvolution() {
+  const state = { calls: [] };
+  const { server, url } = await listen((req, res) => {
+    state.calls.push({ method: req.method, path: req.url, apikey: req.headers.apikey });
+    res.writeHead(req.headers.apikey === 'EVO-KEY' ? 200 : 401, { 'Content-Type': 'application/json' });
+    res.end('{}');
+  });
+  return { state, url, close: () => server.close() };
+}
+
 /** Monta todo el sistema contra los mocks. */
 async function setup({ cwOpts, acOpts, env } = {}) {
   const cw = await mockChatwoot(cwOpts);
   const ac = await mockAstraCalls(acOpts);
+  const evo = await mockEvolution();
   const logs = [];
   const log = {
     info: (m, meta) => logs.push(['info', m, meta]),
@@ -188,11 +201,13 @@ async function setup({ cwOpts, acOpts, env } = {}) {
   };
   const cfg = load({
     ASTRACALLS_URL: ac.url, ASTRACALLS_API_KEY: SECRET_API_KEY, ASTRACALLS_PUBLIC_URL: 'https://calls.example.com',
-    CHATWOOT_URL: cw.url, ALLOWED_ORIGIN: 'https://crm.example.com', HTTP_TIMEOUT_MS: '2000', ...(env || {}),
+    CHATWOOT_URL: cw.url, ALLOWED_ORIGIN: 'https://crm.example.com', HTTP_TIMEOUT_MS: '2000',
+    EVOLUTION_URL: evo.url, EVOLUTION_API_KEY: 'EVO-KEY', ...(env || {}),
   });
   const chatwoot = new ChatwootClient({ baseUrl: cfg.chatwootUrl, timeoutMs: cfg.httpTimeoutMs });
   const astracalls = new AstraCallsClient({ baseUrl: cfg.astracallsUrl, apiKey: cfg.astracallsApiKey, publicUrl: cfg.astracallsPublicUrl, timeoutMs: cfg.httpTimeoutMs, log });
-  const provisioner = new Provisioner({ cfg, chatwoot, astracalls, log });
+  const evolution = new EvolutionClient({ baseUrl: cfg.evolutionUrl, apiKey: cfg.evolutionApiKey, timeoutMs: cfg.httpTimeoutMs });
+  const provisioner = new Provisioner({ cfg, chatwoot, astracalls, log, evolution });
   const app = createApp({ cfg, provisioner, log });
   const { server, url } = await listen(app);
   const call = (method, path, { body, headers, devise = DEVISE, origin = 'https://crm.example.com' } = {}) =>
@@ -202,8 +217,8 @@ async function setup({ cwOpts, acOpts, env } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     }).then(async (r) => ({ status: r.status, headers: r.headers, json: await r.json().catch(() => null) }));
   return {
-    cw, ac, cfg, logs, astracalls, provisioner, call,
-    async close() { app.close(); astracalls.stopWatching(); provisioner.stop(); server.close(); cw.close(); ac.close(); },
+    cw, ac, evo, cfg, logs, astracalls, provisioner, call,
+    async close() { app.close(); astracalls.stopWatching(); provisioner.stop(); server.close(); cw.close(); ac.close(); evo.close(); },
   };
 }
 

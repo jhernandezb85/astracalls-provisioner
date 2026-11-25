@@ -321,6 +321,8 @@
     '.astra-md table.astra-keys th,.astra-md table.astra-keys td{padding:7px 8px;border-top:1px solid var(--a-bd);text-align:left;color:var(--a-fg)}',
     '.astra-md table.astra-keys th{color:var(--a-mut);font-weight:500}',
     '.astra-md .astra-secret{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;background:var(--a-soft);color:var(--a-fg);padding:10px 12px;border-radius:8px;margin-top:8px;user-select:all}',
+    '.astra-md .astra-alert{display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid #f59e0b;background:rgba(245,158,11,.12);color:var(--a-fg);font-size:13px;line-height:1.4}',
+    '.astra-md .astra-alert-i{color:#d97706;font-size:16px;line-height:1.1}',
     '.astra-md .astra-warn{border:1px solid var(--a-ac);border-radius:10px;padding:12px;margin-top:12px}',
     '.astra-md code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--a-soft);padding:1px 5px;border-radius:4px}',
     '@keyframes astra-spin{to{transform:rotate(360deg)}}'
@@ -425,10 +427,22 @@
     optNew.appendChild(rNew); optNew.appendChild(el('span', null, ['Crear una bandeja nueva', el('small', { text: 'Se crea una bandeja para este número.' })]));
     optOld.appendChild(rOld); optOld.appendChild(el('span', null, ['Usar una bandeja existente', el('small', { text: 'Conserva su historial, agentes y automatizaciones.' })]));
     var existing = el('select', { id: 'astra-existing', disabled: 'disabled', style: 'width:100%!important;display:block!important;margin-top:4px!important;padding:8px 10px' }, [el('option', { value: '', text: 'Cargando bandejas…' })]);
+    var otherHint = el('div', { class: 'astra-h', text: 'Antes de conectar, apaga el número en el servicio anterior. Si no, los mensajes entrarán dos veces.' });
+    var otherWarn = el('div', { class: 'astra-alert', role: 'alert', style: 'display:none' }, [
+      el('span', { class: 'astra-alert-i', 'aria-hidden': 'true', text: '⚠' }),
+      el('span', { text: 'Este número ya está conectado en otro proveedor. Si continúas, dejará de funcionar allí. Una vez completado este paso, no se podrá deshacer.' })
+    ]);
     var existingBox = el('div', null, [
       el('label', { class: 'astra-l', for: 'astra-existing', text: 'Bandeja existente (tipo API)' }), existing,
-      el('div', { class: 'astra-h', text: 'Antes de conectar, apaga el número en el servicio anterior (por ejemplo, Evolution). Si no, los mensajes entrarán dos veces.' })
+      otherWarn, otherHint
     ]);
+    function syncExisting() {
+      var opt = existing.options[existing.selectedIndex];
+      var other = !!(opt && opt.getAttribute('data-other') === '1');
+      otherWarn.style.display = other ? '' : 'none';
+      otherHint.style.display = other ? 'none' : '';
+    }
+    existing.addEventListener('change', syncExisting);
     var nameBox = el('div', null, [el('label', { class: 'astra-l', for: 'astra-name', text: 'Nombre de la bandeja' }), name]);
     var histOff = el('div', { class: 'astra-h astra-ind', text: 'No disponible con una bandeja existente: su historial ya está en el CRM.' });
     function syncTarget() {
@@ -459,10 +473,12 @@
       existing.appendChild(el('option', { value: '', text: 'Elige una bandeja…' }));
       list.forEach(function (ib) {
         var o = el('option', { value: String(ib.id), text: ib.name + ' (#' + ib.id + ')' });
+        if (ib.otherProvider) o.setAttribute('data-other', '1');
         existing.appendChild(o);
       });
       if (prev.existingInboxId) existing.value = String(prev.existingInboxId);
       existing.disabled = false;
+      syncExisting();
     }, function () {
       if (gone()) return;
       existing.textContent = '';

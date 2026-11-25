@@ -46,8 +46,9 @@ class Provisioner {
   /**
    * @param {object} deps { cfg, chatwoot, astracalls, log, now? }
    */
-  constructor({ cfg, chatwoot, astracalls, log, now, capiStore, capiSender }) {
+  constructor({ cfg, chatwoot, astracalls, log, now, capiStore, capiSender, evolution }) {
     this.cfg = cfg;
+    this.evo = evolution && evolution.enabled ? evolution : null;
     this.capiStore = capiStore || null;
     this.capiSender = capiSender || null;
     this.cw = chatwoot;
@@ -105,6 +106,11 @@ class Provisioner {
     return !!i && i.channel_type === 'Channel::Api';
   }
 
+  /** Instancia de Evolution de la bandeja (por su webhook), o null. */
+  _evoInstance(webhookUrl) {
+    return this.evo ? this.evo.instanceFromWebhook(webhookUrl) : null;
+  }
+
   _isAstraInbox(i) {
     return !!i && typeof i.webhook_url === 'string' && i.webhook_url.startsWith(this.ac.publicUrl);
   }
@@ -121,7 +127,8 @@ class Provisioner {
     return {
       inboxes: list
         .filter((i) => this._isApiInbox(i) && !this._isAstraInbox(i))
-        .map((i) => ({ id: Number(i.id), name: String(i.name || '') })),
+        // otherProvider: la bandeja viene de Evolution; al conectar, esa instancia se apaga
+        .map((i) => ({ id: Number(i.id), name: String(i.name || ''), otherProvider: !!this._evoInstance(i.webhook_url) })),
     };
   }
 
@@ -179,6 +186,7 @@ class Provisioner {
         id: existingId,
         identifier: ib.inbox_identifier || ib.identifier || '',
         prevWebhook: typeof ib.webhook_url === 'string' ? ib.webhook_url : '',
+        evoInstance: this._evoInstance(ib.webhook_url),
       };
       name = sanitizeInboxName(ib.name) || name || 'WhatsApp';
     }
@@ -503,6 +511,7 @@ class Provisioner {
       item.connectedPhone = String(auth.jid || '').split(/[:@]/)[0] || '';
       item.token = null; // ya no se necesita para revertir
       this.log.info('provision conectada', { provisionId: id, accountId: item.accountId });
+      if (item.reuse && item.reuse.evoInstance) this._shutdownEvolution(item);
       return { state: 'connected', connectedPhone: item.connectedPhone, ...base };
     }
 
@@ -520,6 +529,21 @@ class Provisioner {
     }
     if (auth.qr) return { state: 'qr', qr: auth.qr, ...base };
     return { state: 'starting', ...base };
+  }
+
+  /**
+   * La bandeja venía de Evolution y el número ya quedó vinculado en AstraCalls:
+   * se cierra la sesión de esa instancia en Evolution (no se borra) para que los
+   * mensajes no entren dos veces. Solo después de conectar: si el QR falla o se
+   * cancela, Evolution sigue funcionando.
+   */
+  _shutdownEvolution(item) {
+    const instance = item.reuse.evoInstance;
+    item.reuse.evoInstance = null; // una sola vez
+    this.evo.logout(instance).then((ok) => {
+      if (ok) this.log.info('instancia de Evolution apagada', { accountId: item.accountId, inboxId: item.inboxId });
+      else this.log.warn('no se pudo apagar la instancia de Evolution; apágala a mano', { accountId: item.accountId, inboxId: item.inboxId });
+    });
   }
 
   /** Cancela y revierte si todavía no está conectada. */

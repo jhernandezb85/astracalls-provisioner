@@ -5,6 +5,7 @@ const { makeLogger } = require('./util');
 const { ChatwootClient } = require('./chatwoot');
 const { AstraCallsClient } = require('./astracalls');
 const { Provisioner } = require('./provisioner');
+const { EvolutionClient } = require('./evolution');
 const { createApp } = require('./app');
 const path = require('node:path');
 const { CapiStore, CapiSender } = require('./capi');
@@ -26,7 +27,8 @@ const astracalls = new AstraCallsClient({
 const capiStore = new CapiStore({ file: path.join(cfg.dataDir, 'capi.json'), secret: cfg.capiSecret });
 if (!capiStore.ready) log.warn('CAPI_SECRET no configurado: la conexión con Meta queda desactivada');
 const capiSender = new CapiSender({ store: capiStore, cw: chatwoot, log });
-const provisioner = new Provisioner({ cfg, chatwoot, astracalls, log, capiStore, capiSender });
+const evolution = new EvolutionClient({ baseUrl: cfg.evolutionUrl, apiKey: cfg.evolutionApiKey, timeoutMs: cfg.httpTimeoutMs });
+const provisioner = new Provisioner({ cfg, chatwoot, astracalls, log, capiStore, capiSender, evolution });
 provisioner.start();
 astracalls.startWatching();
 

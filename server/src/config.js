@@ -26,6 +26,9 @@ function load(env = process.env) {
     capiSecret: env.CAPI_SECRET || '',
     publicUrl: trimSlash(env.PUBLIC_URL),
     trustProxy: env.TRUST_PROXY === undefined ? 1 : Number(env.TRUST_PROXY),
+    // opcional: Evolution API, para apagar la instancia al pasar una bandeja de Evolution a AstraCalls
+    evolutionUrl: trimSlash(env.EVOLUTION_URL),
+    evolutionApiKey: env.EVOLUTION_API_KEY || '',
   };
   return cfg;
 }

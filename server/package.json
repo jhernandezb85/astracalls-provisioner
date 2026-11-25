@@ -1,6 +1,6 @@
 {
   "name": "astracalls-provisioner",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Aprovisionador WhatsApp + Llamadas (Chatwoot + AstraCalls)",
   "main": "src/index.js",
   "type": "commonjs",

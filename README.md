@@ -45,6 +45,8 @@ deploy/compose-snippet.yml   Servicio a añadir al stack de AstraCalls en Coolif
 | `DATA_DIR` | no (`/data`) | Carpeta persistente donde se guarda `capi.json` (tokens cifrados). Montar un volumen ahí. |
 | `PUBLIC_URL` | no | URL pública del provisioner, usada para el webhook de CAPI que se crea en cada cuenta de Chatwoot (ej. `https://provision.example.com`). Si falta, se deduce de la petición. |
 | `MAX_SESSIONS_PER_ACCOUNT` | no (1) | Máximo de números por cuenta. Se cuentan las bandejas de la cuenta (`GET /api/v1/accounts/{id}/inboxes`, con el token del usuario) cuyo `webhook_url` empieza con `ASTRACALLS_PUBLIC_URL`. Si ya se alcanzó → **409** "Alcanzaste el límite de números de tu plan.". |
+| `EVOLUTION_URL` | no | URL de Evolution API. Si está junto con `EVOLUTION_API_KEY`, al conectar una bandeja existente que venía de ese Evolution se cierra la sesión de su instancia (ver abajo). |
+| `EVOLUTION_API_KEY` | no | API key global de Evolution. Nunca se registra en logs. |
 | `MCP_KEYS_PER_INBOX` | no (1) | Llaves MCP que el cliente puede crear por bandeja desde Chatwoot. |
 | `PORT` | no (3000) | Puerto del servicio. |
 | `TRUST_PROXY` | no (1) | Saltos de proxy confiables para el rate limit por IP (Traefik de Coolify = 1). |
@@ -147,6 +149,11 @@ y los flujos que usan el ID de la bandeja.
   si se cancela, expira o falla un paso, le devuelve su webhook anterior.
 - **Importar conversaciones queda desactivado**: ese historial ya está en Chatwoot y se duplicaría.
 - Antes de conectar, hay que apagar el número en el servicio anterior; si no, cada mensaje entraría dos veces.
+- **Si la bandeja viene de Evolution** (su webhook es `{EVOLUTION_URL}/chatwoot/webhook/{instancia}` y están
+  configuradas `EVOLUTION_URL` y `EVOLUTION_API_KEY`), el modal muestra un aviso de que el número dejará de
+  funcionar en el otro proveedor. Cuando el número **ya quedó vinculado** en AstraCalls, el provisioner cierra la
+  sesión de esa instancia (`DELETE /instance/logout/{instancia}`); no la borra. Si se cancela o el QR expira,
+  Evolution no se toca.
 
 \* Requieren una versión de AstraCalls que lo soporte (`read_receipts`, `device_mode`, `conversation_status`, leído al responder); con otra versión no tienen efecto.
 

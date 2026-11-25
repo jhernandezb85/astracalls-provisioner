@@ -340,7 +340,7 @@ test('bandejas disponibles: solo las de tipo API no conectadas a AstraCalls', as
     seedInboxes(s);
     const r = await s.call('GET', '/inbox/available?accountId=7');
     assert.equal(r.status, 200);
-    assert.deepEqual(r.json.inboxes, [{ id: 50, name: 'WhatsApp Ventas' }]);
+    assert.deepEqual(r.json.inboxes, [{ id: 50, name: 'WhatsApp Ventas', otherProvider: false }]);
     const other = await s.call('GET', '/inbox/available?accountId=8');
     assert.equal(other.status, 403);
   } finally { await s.close(); }
@@ -405,4 +405,65 @@ test('/healthz muestra la versión que corre', async () => {
     assert.equal(r.json.ok, true);
     assert.match(r.json.version, /^prov-v\d+\.\d+\.\d+/);
   } finally { await s.close(); }
+});
+
+// ---------- bandeja que venía de Evolution ----------
+
+function seedEvolution(s, instance = '5215550001234') {
+  s.cw.state.inboxes.set(60, { name: 'WhatsApp Evo', channel: { type: 'api', webhook_url: s.evo.url + '/chatwoot/webhook/' + instance } });
+}
+
+test('Evolution: se marca la bandeja y la instancia se apaga solo al conectar', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    seedEvolution(s);
+    seedInboxes(s);
+    const av = await s.call('GET', '/inbox/available?accountId=7');
+    assert.deepEqual(av.json.inboxes.find((i) => i.id === 60), { id: 60, name: 'WhatsApp Evo', otherProvider: true });
+    assert.equal(av.json.inboxes.find((i) => i.id === 50).otherProvider, false, 'otro webhook que no es este Evolution');
+
+    const r = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 60 } });
+    assert.equal(r.status, 201);
+    let st = await s.call('GET', `/provision/${r.json.provisionId}/status`);
+    assert.equal(s.evo.state.calls.length, 0, 'no se apaga antes de conectar');
+
+    s.astracalls._onEvent({ type: 'auth-state', sessionId: 'sess1', state: 'open', paired: true, qr: '' });
+    st = await s.call('GET', `/provision/${r.json.provisionId}/status`);
+    assert.equal(st.json.state, 'connected');
+    await new Promise((res) => setTimeout(res, 50));
+    assert.deepEqual(s.evo.state.calls.map((c) => [c.method, c.path, c.apikey]), [['DELETE', '/instance/logout/5215550001234', 'EVO-KEY']]);
+    await s.call('GET', `/provision/${r.json.provisionId}/status`);
+    assert.equal(s.evo.state.calls.length, 1, 'una sola vez');
+    assert.ok(!JSON.stringify(s.logs).includes('EVO-KEY'));
+  } finally { await s.close(); }
+});
+
+test('Evolution: si se cancela, la instancia no se toca', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    seedEvolution(s);
+    const r = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 60 } });
+    await s.call('DELETE', `/provision/${r.json.provisionId}`);
+    assert.equal(s.evo.state.calls.length, 0);
+    assert.equal(s.cw.state.inboxes.get(60).channel.webhook_url, s.evo.url + '/chatwoot/webhook/5215550001234');
+  } finally { await s.close(); }
+});
+
+test('Evolution: sin EVOLUTION_URL no se marca ni se apaga nada', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5', EVOLUTION_URL: '' } });
+  try {
+    seedEvolution(s);
+    const av = await s.call('GET', '/inbox/available?accountId=7');
+    assert.equal(av.json.inboxes.find((i) => i.id === 60).otherProvider, false);
+  } finally { await s.close(); }
+});
+
+test('Evolution: instancia leída del webhook', () => {
+  const { EvolutionClient } = require('../src/evolution');
+  const e = new EvolutionClient({ baseUrl: 'https://evo.example.com', apiKey: 'k' });
+  assert.equal(e.instanceFromWebhook('https://evo.example.com/chatwoot/webhook/Ventas%20MX'), 'Ventas MX');
+  assert.equal(e.instanceFromWebhook('https://otro.example.com/chatwoot/webhook/x'), null);
+  assert.equal(e.instanceFromWebhook('https://evo.example.com/webhook/x'), null);
+  assert.equal(e.instanceFromWebhook('https://evo.example.com/chatwoot/webhook/a/b'), null);
+  assert.equal(new EvolutionClient({ baseUrl: '', apiKey: '' }).instanceFromWebhook('https://evo.example.com/chatwoot/webhook/x'), null);
 });
