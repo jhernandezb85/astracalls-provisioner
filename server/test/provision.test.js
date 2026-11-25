@@ -396,3 +396,13 @@ test('bandeja existente: rechaza la que no es API, la ya conectada o una inexist
     assert.equal(s.ac.state.calls.filter((c) => c.op === 'createSession').length, 0);
   } finally { await s.close(); }
 });
+
+test('/healthz muestra la versión que corre', async () => {
+  const s = await setup();
+  try {
+    const r = await s.call('GET', '/healthz', { origin: null, devise: null });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.ok, true);
+    assert.match(r.json.version, /^prov-v\d+\.\d+\.\d+/);
+  } finally { await s.close(); }
+});

@@ -62,7 +62,7 @@ deploy/compose-snippet.yml   Servicio a añadir al stack de AstraCalls en Coolif
    - **Requisito:** AstraCalls (network_mode host, `:8091`) debe aceptar conexiones desde la red de Docker (escuchar en `0.0.0.0` o en la IP del puente `docker0`), igual que ya requiere tu puente socat. Prueba: desde el contenedor, `wget -qO- --header "X-API-Key: ..." http://host.docker.internal:8091/api/config`.
 3. En Coolify define las variables: `ASTRACALLS_API_KEY`, `ASTRACALLS_PUBLIC_URL`, `CHATWOOT_URL`, `ALLOWED_ORIGIN`.
 4. Asigna el dominio **`https://provision.example.com`** al servicio `provisioner` (puerto 3000) y activa HTTPS.
-5. Despliega y verifica: `curl https://provision.example.com/healthz` → `{"ok":true}` y `curl -I https://provision.example.com/connector.js` → 200.
+5. Despliega y verifica: `curl https://provision.example.com/healthz` → `{"ok":true,"version":"prov-v1.0.4","commit":"abc1234"}` y `curl -I https://provision.example.com/connector.js` → 200.
 
 ### Alternativa: desplegar desde GitHub (sin construir imagen en local)
 

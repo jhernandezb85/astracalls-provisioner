@@ -3,6 +3,17 @@
 const path = require('node:path');
 const express = require('express');
 const { HttpError, deviseFromReq } = require('./util');
+const pkg = require('../package.json');
+
+/**
+ * Versión que corre: la etiqueta de la imagen (CI pasa APP_VERSION) o, si se
+ * construyó desde el repo (ej. Coolify), la de package.json. El commit sale de
+ * GIT_SHA (CI) o SOURCE_COMMIT (Coolify, si "Include Source Commit in Build").
+ */
+const BUILD = {
+  version: process.env.APP_VERSION || 'prov-v' + pkg.version,
+  commit: String(process.env.GIT_SHA || process.env.SOURCE_COMMIT || '').slice(0, 7) || undefined,
+};
 
 /** Limitador de ventana deslizante en memoria. */
 function makeLimiter(max, windowMs, now = () => Date.now()) {
@@ -62,7 +73,7 @@ function createApp({ cfg, provisioner, log, capiSender }) {
     },
   }));
 
-  app.get('/healthz', (req, res) => res.json({ ok: true }));
+  app.get('/healthz', (req, res) => res.json({ ok: true, ...BUILD }));
 
   // Webhook de la cuenta de Chatwoot para CAPI (sin CORS: lo llama Chatwoot).
   // El secreto va en la ruta; se responde enseguida y se procesa aparte.

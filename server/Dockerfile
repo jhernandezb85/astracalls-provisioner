@@ -1,6 +1,11 @@
 FROM node:20-alpine
 
 ENV NODE_ENV=production
+# versión y commit para /healthz (CI los pasa; Coolify pasa SOURCE_COMMIT si está activado)
+ARG APP_VERSION=""
+ARG GIT_SHA=""
+ARG SOURCE_COMMIT=""
+ENV APP_VERSION=$APP_VERSION GIT_SHA=$GIT_SHA SOURCE_COMMIT=$SOURCE_COMMIT
 WORKDIR /app
 
 COPY package.json package-lock.json ./
