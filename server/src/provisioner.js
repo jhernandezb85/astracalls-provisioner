@@ -100,12 +100,42 @@ class Provisioner {
     }
   }
 
-  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi, deviceMode }) {
+  /** ¿La bandeja es de tipo API y su webhook ya apunta a este AstraCalls? */
+  _isApiInbox(i) {
+    return !!i && i.channel_type === 'Channel::Api';
+  }
+
+  _isAstraInbox(i) {
+    return !!i && typeof i.webhook_url === 'string' && i.webhook_url.startsWith(this.ac.publicUrl);
+  }
+
+  /**
+   * Bandejas de tipo API de la cuenta que todavía no están conectadas a este
+   * AstraCalls (por ejemplo, una que usaba otro conector de WhatsApp). Se
+   * pueden conectar conservando su historial, agentes y automatizaciones.
+   */
+  async availableInboxes(devise, accountId) {
+    const { acct, token } = await this._adminToken(devise, accountId);
+    if (!token) throw new HttpError(409, 'Tu usuario no tiene token de API disponible. Pide que se habilite "API y webhooks" en la cuenta.', 'no_api_token');
+    const list = await this.cw.listInboxes(acct, token);
+    return {
+      inboxes: list
+        .filter((i) => this._isApiInbox(i) && !this._isAstraInbox(i))
+        .map((i) => ({ id: Number(i.id), name: String(i.name || '') })),
+    };
+  }
+
+  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi, deviceMode, existingInboxId }) {
     const histDays = clampDays(importHistoryDays);
     const acct = Number(accountId);
     if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
-    const name = sanitizeInboxName(inboxName);
-    if (!name) throw new HttpError(400, 'Escribe un nombre para la bandeja.', 'bad_request');
+    let existingId = null;
+    if (existingInboxId !== undefined && existingInboxId !== null && existingInboxId !== '') {
+      existingId = Number(existingInboxId);
+      if (!Number.isInteger(existingId) || existingId <= 0) throw new HttpError(400, 'Bandeja no válida.', 'bad_request');
+    }
+    let name = sanitizeInboxName(inboxName);
+    if (!name && !existingId) throw new HttpError(400, 'Escribe un nombre para la bandeja.', 'bad_request');
     if (method !== 'qr' && method !== 'code') throw new HttpError(400, 'Método de emparejamiento no válido (usa "qr" o "code").', 'bad_request');
     let digits = null;
     if (phone !== undefined && phone !== null && String(phone).trim() !== '') {
@@ -127,9 +157,7 @@ class Provisioner {
       throw new HttpError(403, 'Esta cuenta no tiene habilitado WhatsApp + Llamadas. Contacta a soporte.', 'account_not_allowed');
     }
     // cupo: bandejas API de AstraCalls ya existentes en la cuenta
-    const prefix = this.ac.publicUrl;
-    const existing = (await this.cw.listInboxes(acct, token))
-      .filter((i) => typeof i.webhook_url === 'string' && i.webhook_url.startsWith(prefix)).length;
+    const existing = (await this.cw.listInboxes(acct, token)).filter((i) => this._isAstraInbox(i)).length;
     if (existing >= this.cfg.maxSessionsPerAccount) {
       throw new HttpError(409, 'Alcanzaste el límite de números de tu plan.', 'quota_reached');
     }
@@ -140,16 +168,37 @@ class Provisioner {
     if (hist.length >= this.cfg.provisionsPerAccountPerHour) {
       throw new HttpError(429, 'Se alcanzó el límite de intentos de esta cuenta. Inténtalo de nuevo más tarde.', 'rate_limited');
     }
+    // bandeja existente: debe ser de esta cuenta, de tipo API y no estar ya conectada
+    let reuse = null;
+    if (existingId) {
+      const ib = await this.cw.getInbox(acct, token, existingId);
+      if (!ib) throw new HttpError(404, 'La bandeja no existe en esta cuenta.', 'inbox_not_found');
+      if (!this._isApiInbox(ib)) throw new HttpError(400, 'Solo se pueden conectar bandejas de tipo API.', 'inbox_not_api');
+      if (this._isAstraInbox(ib)) throw new HttpError(409, 'Esa bandeja ya está conectada a WhatsApp + Llamadas.', 'inbox_already_managed');
+      reuse = {
+        id: existingId,
+        identifier: ib.inbox_identifier || ib.identifier || '',
+        prevWebhook: typeof ib.webhook_url === 'string' ? ib.webhook_url : '',
+      };
+      name = sanitizeInboxName(ib.name) || name || 'WhatsApp';
+    }
+
     hist.push(t);
     this.accountHistory.set(acct, hist);
 
-    const created = { sid: null, inboxId: null };
+    const created = { sid: null, inboxId: null, reuse };
     let code = '';
     try {
       // 2) Sesión en AstraCalls
       created.sid = await this.ac.createSession(name);
-      // 3) Bandeja API en Chatwoot con el webhook de esa sesión
-      const inbox = await this.cw.createApiInbox(acct, token, { name, webhookUrl: this.ac.webhookUrlFor(created.sid) });
+      // 3) Bandeja API en Chatwoot con el webhook de esa sesión (o la existente, con el webhook cambiado)
+      let inbox;
+      if (reuse) {
+        await this.cw.updateInboxWebhook(acct, token, reuse.id, this.ac.webhookUrlFor(created.sid));
+        inbox = { id: reuse.id, identifier: reuse.identifier };
+      } else {
+        inbox = await this.cw.createApiInbox(acct, token, { name, webhookUrl: this.ac.webhookUrlFor(created.sid) });
+      }
       created.inboxId = inbox.id;
       // 4) Configurar Chatwoot en AstraCalls (sin importar historial por defecto)
       const botToken = await this._deviceBotToken(acct, token);
@@ -160,7 +209,8 @@ class Provisioner {
         inbox_id: inbox.id,
         inbox_identifier: inbox.identifier,
         // el historial solo llega al vincular: hay que activarlo ANTES del emparejamiento
-        import_history: !!importHistory,
+        // bandeja existente: su historial ya está en Chatwoot (importarlo lo duplicaría)
+        import_history: !!importHistory && !reuse,
         import_history_days: histDays,
         mirror_api: !!mirrorApi,
         // fork de AstraCalls (rama lhcia): lo escrito desde el celular como mensaje
@@ -186,17 +236,20 @@ class Provisioner {
     const id = newId();
     const created_at = this.now();
     this.items.set(id, {
-      id, ownerUid: profile.id, accountId: acct, sid: created.sid, inboxId: created.inboxId,
+      id, ownerUid: profile.id, accountId: acct, sid: created.sid, inboxId: created.inboxId, reuse,
       method, code, record: !!record, phone: digits, token, createdAt: created_at,
       expiresAt: created_at + this.cfg.ttlMs, lastPair: created_at, connected: false, connectedPhone: '', cancelled: false,
     });
-    this.log.info('provision creada', { provisionId: id, accountId: acct, inboxId: created.inboxId, method });
+    this.log.info('provision creada', { provisionId: id, accountId: acct, inboxId: created.inboxId, method, existingInbox: !!reuse });
     return { provisionId: id };
   }
 
   async _rollback(accountId, token, created) {
     let ok = true;
-    if (created.inboxId) {
+    if (created.inboxId && created.reuse) {
+      // bandeja existente: nunca se borra; se le devuelve su webhook anterior
+      try { await this.cw.updateInboxWebhook(accountId, token, created.inboxId, created.reuse.prevWebhook); } catch { ok = false; }
+    } else if (created.inboxId) {
       try { if (!(await this.cw.deleteInbox(accountId, token, created.inboxId))) ok = false; } catch { ok = false; }
     }
     if (created.sid) {
@@ -481,7 +534,7 @@ class Provisioner {
     item.cancelled = true;
     const token = item.token;
     item.token = null;
-    const rolled = await this._rollback(item.accountId, token, { sid: item.sid, inboxId: item.inboxId });
+    const rolled = await this._rollback(item.accountId, token, { sid: item.sid, inboxId: item.inboxId, reuse: item.reuse });
     this.log.info('provision descartada', { provisionId: item.id, accountId: item.accountId, rolledBack: rolled });
   }
 

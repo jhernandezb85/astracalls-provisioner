@@ -108,8 +108,17 @@ function createApp({ cfg, provisioner, log, capiSender }) {
       devise, accountId: b.accountId, inboxName: b.inboxName, phone: b.phone, record: b.record === true, method: b.method,
       importHistory: b.importHistory === true, importHistoryDays: b.importHistoryDays, mirrorApi: b.mirrorApi === true,
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined,
+      existingInboxId: b.existingInboxId,
     });
     res.status(201).json(out);
+  }));
+
+  // bandejas API de la cuenta que se pueden conectar (conservan su historial)
+  api.get('/inbox/available', wrap(async (req, res) => {
+    if (!limIpStatus(req.ip)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited');
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.availableInboxes(devise, req.query.accountId));
   }));
 
   // ---- configuración de una bandeja ya conectada ----

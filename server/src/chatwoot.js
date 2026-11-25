@@ -167,6 +167,15 @@ class ChatwootClient {
     return r.ok;
   }
 
+  /** PATCH /api/v1/accounts/{id}/inboxes/{inboxId}: cambia el webhook de una bandeja API. */
+  async updateInboxWebhook(accountId, accessToken, inboxId, webhookUrl) {
+    const r = await this._json('PATCH', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken }, {
+      channel: { webhook_url: webhookUrl },
+    });
+    if (!r.ok) throw new HttpError(502, 'No se pudo cambiar el webhook de la bandeja en Chatwoot.', 'inbox_update_failed');
+    return true;
+  }
+
   async deleteInbox(accountId, accessToken, inboxId) {
     const r = await this._json('DELETE', `/api/v1/accounts/${accountId}/inboxes/${inboxId}`, { api_access_token: accessToken });
     return r.ok || r.status === 404;

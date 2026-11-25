@@ -325,3 +325,74 @@ test('SSE: el cliente cachea QR y estado desde /api/events', async () => {
     assert.equal(s.astracalls.auth.get('abc').qr, 'QRDATA');
   } finally { await s.close(); }
 });
+
+// ---------- conectar una bandeja existente ----------
+
+function seedInboxes(s) {
+  s.cw.state.inboxes.set(50, { name: 'WhatsApp Ventas', channel: { type: 'api', webhook_url: 'https://evo.example.com/chatwoot/webhook/x' } });
+  s.cw.state.inboxes.set(51, { name: 'Correo', channelType: 'Channel::Email', channel: {} });
+  s.cw.state.inboxes.set(52, { name: 'Ya conectada', channel: { type: 'api', webhook_url: 'https://calls.example.com/api/sessions/sessX/chatwoot/webhook' } });
+}
+
+test('bandejas disponibles: solo las de tipo API no conectadas a AstraCalls', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    seedInboxes(s);
+    const r = await s.call('GET', '/inbox/available?accountId=7');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.inboxes, [{ id: 50, name: 'WhatsApp Ventas' }]);
+    const other = await s.call('GET', '/inbox/available?accountId=8');
+    assert.equal(other.status, 403);
+  } finally { await s.close(); }
+});
+
+test('bandeja existente: cambia el webhook, no crea bandeja y no importa historial', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    seedInboxes(s);
+    const r = await s.call('POST', '/provision', { body: { ...BODY, inboxName: '', existingInboxId: 50, importHistory: true } });
+    assert.equal(r.status, 201);
+    assert.equal(s.cw.state.calls.filter((c) => c.method === 'POST' && /\/inboxes$/.test(c.path)).length, 0, 'no crea bandeja');
+    assert.equal(s.cw.state.inboxes.get(50).channel.webhook_url, 'https://calls.example.com/api/sessions/sess1/chatwoot/webhook');
+    assert.equal(s.ac.state.calls[0].body.name, 'WhatsApp Ventas');
+    const cfg = s.ac.state.calls.find((c) => c.op === 'setChatwoot').body;
+    assert.equal(cfg.inbox_id, 50);
+    assert.equal(cfg.inbox_identifier, 'ident-50');
+    assert.equal(cfg.import_history, false);
+
+    // cancelar: devuelve el webhook anterior y NO borra la bandeja
+    const c = await s.call('DELETE', `/provision/${r.json.provisionId}`);
+    assert.equal(c.json.state, 'cancelled');
+    assert.ok(s.cw.state.inboxes.has(50), 'la bandeja existente no se borra');
+    assert.equal(s.cw.state.inboxes.get(50).channel.webhook_url, 'https://evo.example.com/chatwoot/webhook/x');
+    assert.ok(!s.ac.state.sessions.has('sess1'));
+  } finally { await s.close(); }
+});
+
+test('bandeja existente: falla un paso → se restaura el webhook, la bandeja queda', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' }, acOpts: { fail: 'setChatwoot' } });
+  try {
+    seedInboxes(s);
+    const r = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 50 } });
+    assert.ok(r.status >= 500);
+    assert.match(r.json.error, /Se revirtieron/);
+    assert.ok(s.cw.state.inboxes.has(50));
+    assert.equal(s.cw.state.inboxes.get(50).channel.webhook_url, 'https://evo.example.com/chatwoot/webhook/x');
+  } finally { await s.close(); }
+});
+
+test('bandeja existente: rechaza la que no es API, la ya conectada o una inexistente', async () => {
+  const s = await setup({ env: { MAX_SESSIONS_PER_ACCOUNT: '5' } });
+  try {
+    seedInboxes(s);
+    const notApi = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 51 } });
+    assert.equal(notApi.status, 400);
+    const managed = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 52 } });
+    assert.equal(managed.status, 409);
+    const missing = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 999 } });
+    assert.equal(missing.status, 404);
+    const bad = await s.call('POST', '/provision', { body: { ...BODY, existingInboxId: 'abc' } });
+    assert.equal(bad.status, 400);
+    assert.equal(s.ac.state.calls.filter((c) => c.op === 'createSession').length, 0);
+  } finally { await s.close(); }
+});

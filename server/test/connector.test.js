@@ -297,7 +297,7 @@ test('el modal envía historial y espejo de API', async () => {
   d.getElementById('astra-mirror').checked = true;
   [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Conectar').click();
   await tick(80);
-  const b = calls[0].body;
+  const b = calls.find((c) => c.key === 'POST /provision').body;
   assert.equal(b.importHistory, true);
   assert.equal(b.importHistoryDays, 90);
   assert.equal(b.mirrorApi, true);
@@ -311,8 +311,9 @@ test('flujo completo con cookie devise: envía headers, muestra QR y luego ¡Lis
   const seen = [];
   let polls = 0;
   dom.window.fetch = (url, opts) => {
-    seen.push({ url, method: opts.method, headers: opts.headers, body: opts.body });
     const json = (o, status = 200) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(o) });
+    if (String(url).includes('/inbox/available')) return json({ inboxes: [] });
+    seen.push({ url, method: opts.method, headers: opts.headers, body: opts.body });
     if (opts.method === 'POST') return json({ provisionId: 'P1' }, 201);
     polls++;
     if (polls === 1) return json({ state: 'qr', qr: '2@abc,def,ghi', inboxId: 55, accountId: 7 });
@@ -395,4 +396,35 @@ test('Integraciones: si no es administrador no aparece la tarjeta', async () => 
   d.body.appendChild(d.createElement('i'));
   await tick(150);
   assert.equal(d.querySelector('[data-astra-capi]'), null);
+});
+
+test('el modal permite elegir una bandeja existente y desactiva la importación', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, COOKIE);
+  await tick();
+  const calls = mockApi(dom, {
+    'GET /inbox/available': () => [200, { inboxes: [{ id: 50, name: 'WhatsApp Ventas' }] }],
+    'POST /provision': () => [500, { error: 'x' }],
+  });
+  const d = dom.window.document;
+  d.querySelector('[data-astra-card]').click();
+  await tick(50);
+  const sel = d.getElementById('astra-existing');
+  assert.equal(sel.disabled, false);
+  assert.ok([...sel.options].some((o) => o.value === '50' && /WhatsApp Ventas/.test(o.textContent)));
+  const rOld = d.getElementById('astra-target-existing');
+  rOld.checked = true;
+  rOld.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(d.getElementById('astra-hist').disabled, true);
+  assert.match(d.querySelector('.astra-md').textContent, /historial ya está en el CRM/);
+  d.getElementById('astra-phone').value = '5215512345678';
+  const go = () => [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Conectar').click();
+  go();
+  assert.match(d.querySelector('.astra-err').textContent, /Elige la bandeja/);
+  sel.value = '50';
+  go();
+  await tick(80);
+  const b = calls.find((c) => c.key === 'POST /provision').body;
+  assert.equal(b.existingInboxId, 50);
+  assert.equal(b.importHistory, false);
+  dom.window.close();
 });

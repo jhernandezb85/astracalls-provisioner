@@ -43,7 +43,7 @@ async function mockChatwoot(opts = {}) {
     }
     let m;
     if (req.method === 'GET' && /^\/api\/v1\/accounts\/\d+\/inboxes$/.test(req.url)) {
-      const payload = [...state.inboxes].map(([id, b]) => ({ id, name: b.name, channel_type: 'Channel::Api', webhook_url: b.channel.webhook_url }));
+      const payload = [...state.inboxes].map(([id, b]) => ({ id, name: b.name, channel_type: b.channelType || 'Channel::Api', webhook_url: b.channel.webhook_url }));
       payload.push(...(state.extraInboxes || []));
       return send(200, { payload });
     }
@@ -58,7 +58,14 @@ async function mockChatwoot(opts = {}) {
       if (req.headers.api_access_token !== USER_TOKEN) return send(401, {});
       const b = state.inboxes.get(Number(m[2]));
       if (!b) return send(404, {});
-      return send(200, { id: Number(m[2]), name: b.name, channel_type: 'Channel::Api', webhook_url: b.channel.webhook_url });
+      return send(200, { id: Number(m[2]), name: b.name, channel_type: b.channelType || 'Channel::Api', webhook_url: b.channel.webhook_url, inbox_identifier: 'ident-' + m[2] });
+    }
+    if (req.method === 'PATCH' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/inboxes\/(\d+)$/))) {
+      if (req.headers.api_access_token !== USER_TOKEN) return send(401, {});
+      const b = state.inboxes.get(Number(m[2]));
+      if (!b) return send(404, {});
+      if (body && body.channel && 'webhook_url' in body.channel) b.channel.webhook_url = body.channel.webhook_url;
+      return send(200, { id: Number(m[2]) });
     }
     // atributos personalizados de la cuenta
     if ((m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/custom_attribute_definitions(?:\?.*)?$/))) {

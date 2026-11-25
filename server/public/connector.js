@@ -416,8 +416,58 @@
     hist.checked = prev.importHistory === true;
     var histDays = daysSelect('astra-hist-days', prev.importHistoryDays || 30);
     histDays.disabled = !hist.checked;
-    hist.addEventListener('change', function () { histDays.disabled = !hist.checked; });
     var err = el('div', { class: 'astra-err', style: 'display:none' });
+
+    // bandeja: nueva o una existente de tipo API (conserva historial, agentes y automatizaciones)
+    var useExisting = prev.existingInboxId ? true : false;
+    var optNew = el('label', { class: 'astra-opt' }), optOld = el('label', { class: 'astra-opt' });
+    var rNew = el('input', { type: 'radio', name: 'astra-target', value: 'new' }), rOld = el('input', { type: 'radio', name: 'astra-target', value: 'existing', id: 'astra-target-existing' });
+    optNew.appendChild(rNew); optNew.appendChild(el('span', null, ['Crear una bandeja nueva', el('small', { text: 'Se crea una bandeja para este número.' })]));
+    optOld.appendChild(rOld); optOld.appendChild(el('span', null, ['Usar una bandeja existente', el('small', { text: 'Conserva su historial, agentes y automatizaciones.' })]));
+    var existing = el('select', { id: 'astra-existing', disabled: 'disabled', style: 'width:100%!important;display:block!important;margin-top:4px!important;padding:8px 10px' }, [el('option', { value: '', text: 'Cargando bandejas…' })]);
+    var existingBox = el('div', null, [
+      el('label', { class: 'astra-l', for: 'astra-existing', text: 'Bandeja existente (tipo API)' }), existing,
+      el('div', { class: 'astra-h', text: 'Antes de conectar, apaga el número en el servicio anterior (por ejemplo, Evolution). Si no, los mensajes entrarán dos veces.' })
+    ]);
+    var nameBox = el('div', null, [el('label', { class: 'astra-l', for: 'astra-name', text: 'Nombre de la bandeja' }), name]);
+    var histOff = el('div', { class: 'astra-h astra-ind', text: 'No disponible con una bandeja existente: su historial ya está en el CRM.' });
+    function syncTarget() {
+      useExisting = rOld.checked;
+      optNew.className = 'astra-opt' + (useExisting ? '' : ' astra-on');
+      optOld.className = 'astra-opt' + (useExisting ? ' astra-on' : '');
+      existingBox.style.display = useExisting ? '' : 'none';
+      nameBox.style.display = useExisting ? 'none' : '';
+      histOff.style.display = useExisting ? '' : 'none';
+      if (useExisting) hist.checked = false;
+      hist.disabled = useExisting;
+      histDays.disabled = useExisting || !hist.checked;
+    }
+    rNew.checked = !useExisting; rOld.checked = useExisting;
+    rNew.addEventListener('change', syncTarget); rOld.addEventListener('change', syncTarget);
+    hist.addEventListener('change', function () { histDays.disabled = !hist.checked; });
+    syncTarget();
+    var owner = modal;
+    var gone = function () { return modal !== owner || owner.stopped || !existing.isConnected; };
+    api('GET', '/inbox/available?accountId=' + encodeURIComponent(modal.accountId)).then(function (r) {
+      if (gone()) return;
+      var list = (r && r.inboxes) || [];
+      existing.textContent = '';
+      if (!list.length) {
+        existing.appendChild(el('option', { value: '', text: 'No hay bandejas de tipo API disponibles' }));
+        return;
+      }
+      existing.appendChild(el('option', { value: '', text: 'Elige una bandeja…' }));
+      list.forEach(function (ib) {
+        var o = el('option', { value: String(ib.id), text: ib.name + ' (#' + ib.id + ')' });
+        existing.appendChild(o);
+      });
+      if (prev.existingInboxId) existing.value = String(prev.existingInboxId);
+      existing.disabled = false;
+    }, function () {
+      if (gone()) return;
+      existing.textContent = '';
+      existing.appendChild(el('option', { value: '', text: 'No se pudieron cargar las bandejas' }));
+    });
     var optQr = el('label', { class: 'astra-opt' }), optCode = el('label', { class: 'astra-opt' });
     var rQr = el('input', { type: 'radio', name: 'astra-m', value: 'qr' }), rCode = el('input', { type: 'radio', name: 'astra-m', value: 'code' });
     optQr.appendChild(rQr); optQr.appendChild(el('span', null, ['Escanear QR', el('small', { text: 'Escanea un código con la cámara de WhatsApp.' })]));
@@ -436,20 +486,23 @@
       var n = name.value.trim(), p = phone.value.trim();
       var digits = p.replace(/\D/g, '');
       var msg = '';
-      if (!n) msg = 'Escribe un nombre para la bandeja.';
+      var exId = useExisting ? Number(existing.value) : 0;
+      if (useExisting && !exId) msg = 'Elige la bandeja existente que quieres conectar.';
+      else if (!useExisting && !n) msg = 'Escribe un nombre para la bandeja.';
       else if (p && (digits.length < 8 || digits.length > 15 || !/^\+?[\d\s\-()]+$/.test(p))) msg = 'El número no es válido: usa solo dígitos con código de país (ej. 5215512345678).';
       else if (method === 'code' && !digits) msg = 'Para el código de 8 caracteres necesitas escribir tu número con código de país.';
       if (msg) { err.textContent = msg; err.style.display = ''; return; }
       start({
         name: n, phone: digits, record: rec.checked, method: method,
-        mirrorApi: mirror.checked, importHistory: hist.checked, importHistoryDays: Number(histDays.value)
+        mirrorApi: mirror.checked, importHistory: !useExisting && hist.checked, importHistoryDays: Number(histDays.value),
+        existingInboxId: exId || null
       });
     });
 
     setBox([
       el('h2', { text: 'WhatsApp + Llamadas' }),
       el('p', { text: 'Conecta tu número de WhatsApp para chatear y recibir/hacer llamadas desde este CRM.' }),
-      el('label', { class: 'astra-l', for: 'astra-name', text: 'Nombre de la bandeja' }), name,
+      optNew, optOld, existingBox, nameBox,
       el('label', { class: 'astra-l', for: 'astra-phone', text: 'Número de WhatsApp (con código de país)' }), phone,
       el('div', { class: 'astra-h', text: 'Solo dígitos, sin espacios. Ej.: 5215512345678' }),
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
@@ -457,6 +510,7 @@
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
       el('div', { class: 'astra-h astra-ind', text: 'Llegan con su fecha original, sin reenviar nada a tus contactos. Las conversaciones importadas quedan resueltas y se reabren cuando el contacto vuelve a escribir.' }),
+      histOff,
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
       el('div', { class: 'astra-row' }, [cancel, go])
@@ -484,7 +538,8 @@
     renderLoading('Creando la conexión…');
     api('POST', '/provision', {
       accountId: modal.accountId, inboxName: form.name, phone: form.phone, record: form.record, method: form.method,
-      mirrorApi: !!form.mirrorApi, importHistory: !!form.importHistory, importHistoryDays: form.importHistoryDays || 30
+      mirrorApi: !!form.mirrorApi, importHistory: !!form.importHistory, importHistoryDays: form.importHistoryDays || 30,
+      existingInboxId: form.existingInboxId || undefined
     })
       .then(function (r) {
         if (!modal || modal.stopped) {

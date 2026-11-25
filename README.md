@@ -108,7 +108,8 @@ Si tu Chatwoot define una Content-Security-Policy estricta, añade `provision.ex
 Todas las rutas (salvo `/connector.js` y `/healthz`) exigen los headers devise del usuario (`access-token`, `client`, `uid`),
 que el script lee de la cookie `cw_d_session_info`, y solo aceptan CORS desde `ALLOWED_ORIGIN`.
 
-- `POST /provision` `{accountId, inboxName, phone, record, method:"qr"|"code", importHistory?, importHistoryDays?: 7|30|90, mirrorApi?}` → `201 {provisionId}`
+- `POST /provision` `{accountId, inboxName, phone, record, method:"qr"|"code", importHistory?, importHistoryDays?: 7|30|90, mirrorApi?, existingInboxId?}` → `201 {provisionId}`
+- `GET /inbox/available?accountId` → `{inboxes:[{id, name}]}`: bandejas de tipo API de la cuenta que todavía no están conectadas a AstraCalls
 - `GET /provision/{id}/status` → `{state: starting|qr|code|connected|expired|cancelled, qr?, code?, inboxId, accountId, connectedPhone?}`
 - `DELETE /provision/{id}` → cancela y revierte (si aún no se conectó)
 
@@ -134,6 +135,18 @@ Revocar llaves **no** está expuesto a los clientes: lo hace el administrador de
 | Siempre en línea | no | El número aparece "en línea" todo el tiempo; mientras está encendido, el celular deja de recibir notificaciones. |
 | Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 con su fecha original, sin reenviar nada. **Solo funciona si está activa al vincular** el número. Las conversaciones importadas quedan resueltas* (no llenan la bandeja ni las atiende Captain). |
 | Mostrar mensajes enviados por API | no | Lo que se envía por la API de AstraCalls (ej. n8n) aparece como nota privada en la conversación. |
+
+### Conectar una bandeja existente
+
+En el modal se puede elegir **"Usar una bandeja existente"** en vez de crear una nueva. El desplegable muestra
+solo las bandejas de **tipo API** de la cuenta que aún no están conectadas a AstraCalls (por ejemplo, una que
+usaba otro conector de WhatsApp). Así se conservan el historial, los contactos, los agentes, las automatizaciones
+y los flujos que usan el ID de la bandeja.
+
+- El provisioner solo cambia el **webhook** de la bandeja para que apunte a la sesión nueva. Nunca la borra:
+  si se cancela, expira o falla un paso, le devuelve su webhook anterior.
+- **Importar conversaciones queda desactivado**: ese historial ya está en Chatwoot y se duplicaría.
+- Antes de conectar, hay que apagar el número en el servicio anterior; si no, cada mensaje entraría dos veces.
 
 \* Requieren una versión de AstraCalls que lo soporte (`read_receipts`, `device_mode`, `conversation_status`, leído al responder); con otra versión no tienen efecto.
 
