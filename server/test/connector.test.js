@@ -163,7 +163,7 @@ function mockApi(dom, routes) {
   return calls;
 }
 
-const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, contactDelete: 'delete', conversationStatus: 'pending', readMessages: false, alwaysOnline: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
+const MANAGED = { managed: true, connected: true, phone: '5215550001234', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, contactDelete: 'delete', conversationStatus: 'pending', readMessages: false, alwaysOnline: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
 
 test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
   const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38/configuration', SETTINGS_PAGE(), COOKIE);
@@ -186,7 +186,7 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   const card = d.querySelector('[data-astra-inbox="1/38"]');
   assert.ok(card, 'tarjeta insertada');
   assert.equal(d.getElementById('cfgtab').lastElementChild, card, 'al final de la pestaña Configuración');
-  assert.match(card.textContent, /Conectado · \+5358310867/);
+  assert.match(card.textContent, /Conectado · \+5215550001234/);
   assert.match(card.textContent, /Conectar tu IA \(MCP\)/);
   assert.equal(calls.find((c) => c.key === 'GET /inbox/settings').url, 'https://prov.example.com/inbox/settings?accountId=1&inboxId=38');
   assert.match(card.textContent, /sin abrir conversaciones pendientes/);
