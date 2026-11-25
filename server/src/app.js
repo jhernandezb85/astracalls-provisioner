@@ -134,6 +134,8 @@ function createApp({ cfg, provisioner, log, capiSender }) {
       recording: bool(b.recording), mirrorApi: bool(b.mirrorApi), importHistory: bool(b.importHistory),
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
       contactDelete: typeof b.contactDelete === 'string' ? b.contactDelete : undefined,
+      conversationStatus: typeof b.conversationStatus === 'string' ? b.conversationStatus : undefined,
+      readMessages: bool(b.readMessages), alwaysOnline: bool(b.alwaysOnline),
       importHistoryDays: b.importHistoryDays,
     }));
   }));

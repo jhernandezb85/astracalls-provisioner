@@ -106,8 +106,21 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
       mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true, contactDelete: 'note',
+      conversationStatus: 'open', readMessages: false, alwaysOnline: false,
       importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
+
+    // conversaciones nuevas pendientes (Captain), leer automáticamente y siempre en línea
+    assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, conversationStatus: 'resolved' } })).status, 400);
+    const conv = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, conversationStatus: 'pending', readMessages: true, alwaysOnline: true } });
+    assert.equal(conv.status, 200);
+    assert.equal(conv.json.conversationStatus, 'pending');
+    assert.equal(conv.json.readMessages, true);
+    assert.equal(conv.json.alwaysOnline, true);
+    const cwCfg = s.ac.state.sessions.get('sess1').chatwoot;
+    assert.equal(cwCfg.conversation_status, 'pending');
+    assert.equal(cwCfg.read_messages, true);
+    assert.equal(cwCfg.always_online, true);
 
     r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, deviceMode: 'keep', readReceipts: false, importHistory: true, importHistoryDays: 7 } });
     assert.equal(r.status, 200);

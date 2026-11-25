@@ -163,7 +163,7 @@ function mockApi(dom, routes) {
   return calls;
 }
 
-const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, contactDelete: 'delete', importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
+const MANAGED = { managed: true, connected: true, phone: '5358310867', recording: true, mirrorApi: false, deviceMode: 'keep', deviceBot: true, readReceipts: false, contactDelete: 'delete', conversationStatus: 'pending', readMessages: false, alwaysOnline: false, importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp' };
 
 test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves MCP', async () => {
   const dom = boot('https://crm.example.com/app/accounts/1/settings/inboxes/38/configuration', SETTINGS_PAGE(), COOKIE);
@@ -225,6 +225,26 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   await tick(80);
   assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.contactDelete === 'note'));
   assert.doesNotMatch(card.textContent, /datos de los anuncios/, 'los anuncios son de la cuenta, no de la bandeja');
+
+  // conversaciones nuevas: abiertas / pendientes (Captain)
+  assert.match(card.textContent, /Las conversaciones nuevas entran como/);
+  const convRadios = [...card.querySelectorAll('input[type=radio][name^="astra-convmode"]')];
+  assert.deepEqual(convRadios.map((r) => r.value), ['open', 'pending']);
+  assert.equal(convRadios.find((r) => r.checked).value, 'pending', 'muestra la opción guardada');
+  const openConv = convRadios.find((r) => r.value === 'open');
+  openConv.checked = true; openConv.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.conversationStatus === 'open'));
+  // leer automáticamente y siempre en línea
+  const readBox = boxFor(/Leer mensajes automáticamente/);
+  readBox.checked = true; readBox.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.readMessages === true));
+  const onlineBox = boxFor(/Siempre en línea/);
+  onlineBox.checked = true; onlineBox.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.alwaysOnline === true));
+  assert.match(card.textContent, /deja de recibir notificaciones/);
 
   // crear llave MCP: el botón está bloqueado hasta aceptar el aviso
   const createBtn = [...card.querySelectorAll('button')].find((b) => b.textContent === 'Crear llave');

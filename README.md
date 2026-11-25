@@ -129,10 +129,13 @@ Revocar llaves **no** está expuesto a los clientes: lo hace el administrador de
 | Grabar llamadas | sí | Graba las llamadas y las deja como nota privada en Chatwoot. |
 | Checks de entregado y leído | sí* | Los mensajes del agente muestran ✓✓ entregado / leído; un envío fallido queda marcado con el motivo. |
 | Lo escrito desde el celular como mensaje normal | sí* | Entra como mensaje de salida en vez de nota privada. Cuenta como respuesta humana: abre conversaciones pendientes de bots. |
-
-\* Requieren la versión de AstraCalls con `read_receipts` / `device_mode`; con otra versión no tienen efecto.
-| Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 como notas privadas, sin reenviar nada. **Solo funciona si está activa al vincular** el número; puede crear muchas conversaciones de golpe. |
+| Conversaciones nuevas: abiertas / pendientes | abiertas* | Con **pendientes**, cada conversación nueva espera a que la atienda primero un asistente de Captain (o un bot) conectado a la bandeja. |
+| Leer mensajes automáticamente | no | Marca como leído todo lo que llega. Apagado, los mensajes se marcan como leídos cuando alguien responde desde Chatwoot*. |
+| Siempre en línea | no | El número aparece "en línea" todo el tiempo; mientras está encendido, el celular deja de recibir notificaciones. |
+| Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 con su fecha original, sin reenviar nada. **Solo funciona si está activa al vincular** el número. Las conversaciones importadas quedan resueltas* (no llenan la bandeja ni las atiende Captain). |
 | Mostrar mensajes enviados por API | no | Lo que se envía por la API de AstraCalls (ej. n8n) aparece como nota privada en la conversación. |
+
+\* Requieren una versión de AstraCalls que lo soporte (`read_receipts`, `device_mode`, `conversation_status`, leído al responder); con otra versión no tienen efecto.
 
 ### Conectar una IA (MCP)
 

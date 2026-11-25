@@ -270,6 +270,13 @@
     { value: 'delete', label: 'Eliminarlo también en el CRM' }
   ];
   var DELETE_HINT = 'Lo que tú eliminas para todos (en el celular o en el CRM) se elimina en ambos lados. WhatsApp solo permite eliminar durante unos 2 días.';
+  var CONV_MODES = [
+    { value: 'open', label: 'Abiertas: las atiende tu equipo (recomendado sin Captain)' },
+    { value: 'pending', label: 'Pendientes: las atiende primero el Captain' }
+  ];
+  var CONV_HINT = 'Usa "Pendientes" solo si conectaste un asistente de Captain a esta bandeja; si no, nadie las verá como abiertas. Cuando el Captain transfiere la conversación o escribes desde el celular, pasa a abierta. El historial importado siempre entra como resuelto.';
+  var READ_HINT = 'Marca como leído todo lo que llega, aunque nadie lo haya visto. Si lo dejas apagado, los mensajes se marcan como leídos cuando alguien responde desde el CRM.';
+  var ONLINE_HINT = 'El número aparece "en línea" todo el tiempo. Ojo: mientras está encendido, el celular deja de recibir notificaciones de WhatsApp.';
   var MIRROR_HINT ='Aparecen como notas privadas, para que tu equipo vea lo que envían tus automatizaciones sin abrir conversaciones pendientes.';
 
   var CSS = [
@@ -449,7 +456,7 @@
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', histDays]),
-      el('div', { class: 'astra-h astra-ind', text: 'Llegan como notas privadas, sin reenviar nada a tus contactos. Puede crear muchas conversaciones de golpe.' }),
+      el('div', { class: 'astra-h astra-ind', text: 'Llegan con su fecha original, sin reenviar nada a tus contactos. Las conversaciones importadas quedan resueltas y se reabren cuando el contacto vuelve a escribir.' }),
       el('div', { class: 'astra-l', text: 'Método de emparejamiento', style: 'margin-top:14px;font-weight:500' }), optQr, optCode,
       err,
       el('div', { class: 'astra-row' }, [cancel, go])
@@ -718,7 +725,29 @@
       delBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
     });
     delBox.appendChild(el('div', { class: 'astra-h astra-ind', text: DELETE_HINT }));
-    var inputs = [rec, ticks, mirror, hist, days].concat(modeRadios, delRadios);
+    // conversaciones nuevas: abiertas o pendientes (Captain)
+    var curConv = CONV_MODES.some(function (o) { return o.value === data.conversationStatus; }) ? data.conversationStatus : 'open';
+    var convRadios = [];
+    var convBox = el('div', { class: 'astra-modes' });
+    CONV_MODES.forEach(function (o) {
+      var r = el('input', { type: 'radio', name: 'astra-convmode-' + inboxId, value: o.value });
+      r.checked = o.value === curConv;
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        var prev = curConv;
+        curConv = o.value;
+        save({ conversationStatus: o.value }, function () {
+          curConv = prev;
+          convRadios.forEach(function (x) { x.checked = x.value === prev; });
+        });
+      });
+      convRadios.push(r);
+      convBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
+    });
+    convBox.appendChild(el('div', { class: 'astra-h astra-ind', text: CONV_HINT }));
+    var readAll = el('input', { type: 'checkbox' }); readAll.checked = !!data.readMessages;
+    var online = el('input', { type: 'checkbox' }); online.checked = !!data.alwaysOnline;
+    var inputs = [rec, ticks, mirror, hist, days, readAll, online].concat(modeRadios, delRadios, convRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -735,6 +764,8 @@
     rec.addEventListener('change', function () { save({ recording: rec.checked }, function () { rec.checked = !rec.checked; }); });
     mirror.addEventListener('change', function () { save({ mirrorApi: mirror.checked }, function () { mirror.checked = !mirror.checked; }); });
     ticks.addEventListener('change', function () { save({ readReceipts: ticks.checked }, function () { ticks.checked = !ticks.checked; }); });
+    readAll.addEventListener('change', function () { save({ readMessages: readAll.checked }, function () { readAll.checked = !readAll.checked; }); });
+    online.addEventListener('change', function () { save({ alwaysOnline: online.checked }, function () { online.checked = !online.checked; }); });
     hist.addEventListener('change', function () {
       save({ importHistory: hist.checked, importHistoryDays: Number(days.value) }, function () { hist.checked = !hist.checked; });
     });
@@ -828,12 +859,18 @@
       el('label', { class: 'astra-ck' }, [rec, 'Grabar llamadas']),
       el('label', { class: 'astra-ck' }, [ticks, 'Mostrar checks de entregado y leído']),
       el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó. Si un mensaje no sale, verás el motivo y podrás reenviarlo.' }),
+      el('div', { class: 'astra-sub', text: 'Las conversaciones nuevas entran como:' }),
+      convBox,
       el('div', { class: 'astra-sub', text: 'Lo que escribes desde el celular entra:' }),
       modeBox,
       el('div', { class: 'astra-sub', text: 'Cuando el cliente elimina un mensaje en WhatsApp:' }),
       delBox,
       el('label', { class: 'astra-ck' }, [mirror, 'Mostrar en el CRM los mensajes enviados por API (ej. n8n)']),
       el('div', { class: 'astra-h astra-ind', text: MIRROR_HINT }),
+      el('label', { class: 'astra-ck' }, [readAll, 'Leer mensajes automáticamente']),
+      el('div', { class: 'astra-h astra-ind', text: READ_HINT }),
+      el('label', { class: 'astra-ck' }, [online, 'Siempre en línea']),
+      el('div', { class: 'astra-h astra-ind', text: ONLINE_HINT }),
       el('label', { class: 'astra-ck' }, [hist, 'Importar conversaciones anteriores de los últimos', days]),
       el('div', { class: 'astra-h astra-ind', text: 'Solo aplica la próxima vez que se vincule el número (WhatsApp envía el historial al vincular).' }),
       saved,
