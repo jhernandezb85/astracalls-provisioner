@@ -1332,8 +1332,17 @@
     return {
       accountId: Number(m[1]), conversationId: Number(m[2]),
       messageId: Number(c.getAttribute('data-message-id')),
-      text: String(body.innerText || body.textContent || '').trim()
+      text: realMessageText(body.innerText || body.textContent || '')
     };
+  }
+
+  // Quita los encabezados que AstraCalls agrega en el CRM y que no son parte del
+  // mensaje de WhatsApp: "📱 Enviado desde el celular" y, en grupos, "Nombre (tú):".
+  function realMessageText(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n');
+    if (lines.length > 1 && /^\s*(📱|Enviado desde el celular)/.test(lines[0])) lines.shift();
+    if (lines.length > 1 && /\(tú\)\s*\*?\s*:\s*\*?\s*$/.test(lines[0])) lines.shift();
+    return lines.join('\n').trim();
   }
 
   function rememberTarget(e) {

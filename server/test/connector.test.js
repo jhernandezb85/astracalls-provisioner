@@ -570,3 +570,17 @@ test('editar: si WhatsApp no lo permite, se muestra el motivo', async () => {
   assert.match(d.querySelector('.astra-err').textContent, /15 minutos/);
   dom.window.close();
 });
+
+test('editar: el texto no trae los encabezados del CRM (celular, autor del grupo)', async () => {
+  const page = `<div id="app"><div id="message21" class="flex justify-end" data-message-id="21"><div><div class="right-bubble bg-n-solid-iris" data-bubble-name="text"><div class="overflow-hidden">📱 Enviado desde el celular
+José Luis HB (tú):
+La API oficial de WhatsApp</div></div></div></div></div>`;
+  const dom = boot('https://crm.example.com/app/accounts/7/conversations/55', page, COOKIE);
+  await tick();
+  const menu = openChatwootMenu(dom, 21);
+  await tick(30);
+  menu.querySelector('[data-astra-edit]').click();
+  await tick(20);
+  assert.equal(dom.window.document.getElementById('astra-edit-text').value, 'La API oficial de WhatsApp');
+  dom.window.close();
+});
