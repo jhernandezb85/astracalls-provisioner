@@ -106,7 +106,7 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.deepEqual(r.json, {
       managed: true, connected: true, phone: '5215512345678', recording: false,
       mirrorApi: false, deviceMode: 'open', deviceBot: true, readReceipts: true, contactDelete: 'note',
-      conversationStatus: 'open', readMessages: false, alwaysOnline: false,
+      conversationStatus: 'open', archiveSync: 'off', readMessages: false, alwaysOnline: false,
       importHistory: false, importHistoryDays: 30, mcpEndpoint: 'https://calls.example.com/mcp',
     });
 
@@ -121,6 +121,12 @@ test('leer y cambiar la configuración de una bandeja conectada', async () => {
     assert.equal(cwCfg.conversation_status, 'pending');
     assert.equal(cwCfg.read_messages, true);
     assert.equal(cwCfg.always_online, true);
+
+    // archivar en WhatsApp <-> resolver en el CRM
+    assert.equal((await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, archiveSync: 'archive' } })).status, 400);
+    const arch = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, archiveSync: 'pending' } });
+    assert.equal(arch.json.archiveSync, 'pending');
+    assert.equal(s.ac.state.sessions.get('sess1').chatwoot.archive_sync, 'pending');
 
     r = await s.call('PUT', '/inbox/settings', { body: { accountId: 7, inboxId: 100, recording: true, mirrorApi: true, deviceMode: 'keep', readReceipts: false, importHistory: true, importHistoryDays: 7 } });
     assert.equal(r.status, 200);

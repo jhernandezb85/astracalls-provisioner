@@ -274,6 +274,12 @@
     { value: 'open', label: 'Abiertas: las atiende tu equipo (recomendado sin Captain)' },
     { value: 'pending', label: 'Pendientes: las atiende primero el Captain' }
   ];
+  var ARCHIVE_MODES = [
+    { value: 'off', label: 'No sincronizar' },
+    { value: 'resolved', label: 'La conversación se resuelve' },
+    { value: 'pending', label: 'La conversación queda pendiente' }
+  ];
+  var ARCHIVE_HINT = 'Funciona en los dos sentidos: resolver en el CRM archiva el chat en WhatsApp. Desarchivar en WhatsApp o reabrir en el CRM vuelve a abrirlo en ambos lados.';
   var CONV_HINT = 'Usa "Pendientes" solo si conectaste un asistente de Captain a esta bandeja; si no, nadie las verá como abiertas. Cuando el Captain transfiere la conversación o escribes desde el celular, pasa a abierta. El historial importado siempre entra como resuelto.';
   var READ_HINT = 'Marca como leído todo lo que llega, aunque nadie lo haya visto. Si lo dejas apagado, los mensajes se marcan como leídos cuando alguien responde desde el CRM.';
   var ONLINE_HINT = 'El número aparece "en línea" todo el tiempo. Ojo: mientras está encendido, el celular deja de recibir notificaciones de WhatsApp.';
@@ -820,9 +826,29 @@
       convBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
     });
     convBox.appendChild(el('div', { class: 'astra-h astra-ind', text: CONV_HINT }));
+    // archivar en WhatsApp <-> resolver en el CRM
+    var curArch = ARCHIVE_MODES.some(function (o) { return o.value === data.archiveSync; }) ? data.archiveSync : 'off';
+    var archRadios = [];
+    var archBox = el('div', { class: 'astra-modes' });
+    ARCHIVE_MODES.forEach(function (o) {
+      var r = el('input', { type: 'radio', name: 'astra-archmode-' + inboxId, value: o.value });
+      r.checked = o.value === curArch;
+      r.addEventListener('change', function () {
+        if (!r.checked) return;
+        var prev = curArch;
+        curArch = o.value;
+        save({ archiveSync: o.value }, function () {
+          curArch = prev;
+          archRadios.forEach(function (x) { x.checked = x.value === prev; });
+        });
+      });
+      archRadios.push(r);
+      archBox.appendChild(el('label', { class: 'astra-ck' }, [r, o.label]));
+    });
+    archBox.appendChild(el('div', { class: 'astra-h astra-ind', text: ARCHIVE_HINT }));
     var readAll = el('input', { type: 'checkbox' }); readAll.checked = !!data.readMessages;
     var online = el('input', { type: 'checkbox' }); online.checked = !!data.alwaysOnline;
-    var inputs = [rec, ticks, mirror, hist, days, readAll, online].concat(modeRadios, delRadios, convRadios);
+    var inputs = [rec, ticks, mirror, hist, days, readAll, online].concat(modeRadios, delRadios, convRadios, archRadios);
 
     function save(patch, revert) {
       inputs.forEach(function (n) { n.disabled = true; });
@@ -936,6 +962,8 @@
       el('div', { class: 'astra-h astra-ind', text: 'Tus mensajes muestran cuándo le llegaron al cliente y cuándo los leyó. Si un mensaje no sale, verás el motivo y podrás reenviarlo.' }),
       el('div', { class: 'astra-sub', text: 'Las conversaciones nuevas entran como:' }),
       convBox,
+      el('div', { class: 'astra-sub', text: 'Al archivar un chat en WhatsApp:' }),
+      archBox,
       el('div', { class: 'astra-sub', text: 'Lo que escribes desde el celular entra:' }),
       modeBox,
       el('div', { class: 'astra-sub', text: 'Cuando el cliente elimina un mensaje en WhatsApp:' }),

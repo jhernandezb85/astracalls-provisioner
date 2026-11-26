@@ -155,6 +155,7 @@ function createApp({ cfg, provisioner, log, capiSender }) {
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined, readReceipts: bool(b.readReceipts),
       contactDelete: typeof b.contactDelete === 'string' ? b.contactDelete : undefined,
       conversationStatus: typeof b.conversationStatus === 'string' ? b.conversationStatus : undefined,
+      archiveSync: typeof b.archiveSync === 'string' ? b.archiveSync : undefined,
       readMessages: bool(b.readMessages), alwaysOnline: bool(b.alwaysOnline),
       importHistoryDays: b.importHistoryDays,
     }));

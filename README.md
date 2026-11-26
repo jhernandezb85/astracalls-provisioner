@@ -133,6 +133,7 @@ Revocar llaves **no** está expuesto a los clientes: lo hace el administrador de
 | Checks de entregado y leído | sí* | Los mensajes del agente muestran ✓✓ entregado / leído; un envío fallido queda marcado con el motivo. |
 | Lo escrito desde el celular como mensaje normal | sí* | Entra como mensaje de salida en vez de nota privada. Cuenta como respuesta humana: abre conversaciones pendientes de bots. |
 | Conversaciones nuevas: abiertas / pendientes | abiertas* | Con **pendientes**, cada conversación nueva espera a que la atienda primero un asistente de Captain (o un bot) conectado a la bandeja. |
+| Al archivar un chat en WhatsApp: no sincronizar / resuelta / pendiente | no sincronizar* | Espejo en los dos sentidos: archivar en WhatsApp resuelve (o deja pendiente) la conversación, y resolver en el CRM archiva el chat. Desarchivar o reabrir vuelve a abrirlo en ambos lados. |
 | Leer mensajes automáticamente | no | Marca como leído todo lo que llega. Apagado, los mensajes se marcan como leídos cuando alguien responde desde Chatwoot*. |
 | Siempre en línea | no | El número aparece "en línea" todo el tiempo; mientras está encendido, el celular deja de recibir notificaciones. |
 | Importar conversaciones anteriores (7/30/90 días) | no | Trae el historial de chats 1:1 con su fecha original, sin reenviar nada. **Solo funciona si está activa al vincular** el número. Las conversaciones importadas quedan resueltas* (no llenan la bandeja ni las atiende Captain). |

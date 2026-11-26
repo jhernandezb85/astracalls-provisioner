@@ -235,6 +235,15 @@ test('ajustes de bandeja: muestra la tarjeta, guarda opciones y gestiona llaves 
   openConv.checked = true; openConv.dispatchEvent(new dom.window.Event('change'));
   await tick(80);
   assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.conversationStatus === 'open'));
+  // archivar en WhatsApp <-> resolver en el CRM
+  assert.match(card.textContent, /Al archivar un chat en WhatsApp/);
+  const archRadios = [...card.querySelectorAll('input[type=radio][name^="astra-archmode"]')];
+  assert.deepEqual(archRadios.map((r) => r.value), ['off', 'resolved', 'pending']);
+  assert.equal(archRadios.find((r) => r.checked).value, 'off', 'por defecto no sincroniza');
+  const archRes = archRadios.find((r) => r.value === 'resolved');
+  archRes.checked = true; archRes.dispatchEvent(new dom.window.Event('change'));
+  await tick(80);
+  assert.ok(calls.some((c) => c.key === 'PUT /inbox/settings' && c.body.archiveSync === 'resolved'));
   // leer automáticamente y siempre en línea
   const readBox = boxFor(/Leer mensajes automáticamente/);
   readBox.checked = true; readBox.dispatchEvent(new dom.window.Event('change'));

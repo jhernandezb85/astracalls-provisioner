@@ -19,6 +19,8 @@ const DEVICE_MODES = ['open', 'keep', 'note'];
 const CONTACT_DELETE = ['note', 'delete'];
 // estado con que AstraCalls crea las conversaciones nuevas (pending = Captain atiende primero)
 const CONV_STATUS = ['open', 'pending'];
+// espejo archivar (WhatsApp) <-> resolver (Chatwoot): desactivado, resuelta o pendiente
+const ARCHIVE_SYNC = ['off', 'resolved', 'pending'];
 // atributos de conversación con los datos del anuncio (para CAPI). Son de la CUENTA:
 // se crean desde la tarjeta "Meta · API de conversiones" en Integraciones, y
 // AstraCalls los llena en cualquier bandeja de la cuenta si existen.
@@ -345,6 +347,7 @@ class Provisioner {
       readReceipts: cfg.read_receipts !== false,
       contactDelete: CONTACT_DELETE.includes(cfg.contact_delete) ? cfg.contact_delete : 'note',
       conversationStatus: CONV_STATUS.includes(cfg.conversation_status) ? cfg.conversation_status : 'open',
+      archiveSync: ARCHIVE_SYNC.includes(cfg.archive_sync) ? cfg.archive_sync : 'off',
       readMessages: !!cfg.read_messages,
       alwaysOnline: !!cfg.always_online,
       importHistory: !!cfg.import_history,
@@ -353,7 +356,7 @@ class Provisioner {
     };
   }
 
-  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, conversationStatus, readMessages, alwaysOnline, importHistory, importHistoryDays }) {
+  async updateInboxSettings(devise, { accountId, inboxId, recording, mirrorApi, deviceMode, readReceipts, contactDelete, conversationStatus, archiveSync, readMessages, alwaysOnline, importHistory, importHistoryDays }) {
     const { sid } = await this._resolveInbox(devise, accountId, inboxId);
     if (deviceMode !== undefined && !DEVICE_MODES.includes(deviceMode)) {
       throw new HttpError(400, 'Opción no válida para lo escrito desde el celular.', 'bad_request');
@@ -364,6 +367,9 @@ class Provisioner {
     if (conversationStatus !== undefined && !CONV_STATUS.includes(conversationStatus)) {
       throw new HttpError(400, 'Opción no válida para las conversaciones nuevas.', 'bad_request');
     }
+    if (archiveSync !== undefined && !ARCHIVE_SYNC.includes(archiveSync)) {
+      throw new HttpError(400, 'Opción no válida para archivar.', 'bad_request');
+    }
     if (typeof recording === 'boolean') await this.ac.setRecording(sid, recording);
     const patch = {};
     if (typeof mirrorApi === 'boolean') patch.mirror_api = mirrorApi;
@@ -371,6 +377,7 @@ class Provisioner {
     if (typeof readReceipts === 'boolean') patch.read_receipts = readReceipts;
     if (contactDelete !== undefined) patch.contact_delete = contactDelete;
     if (conversationStatus !== undefined) patch.conversation_status = conversationStatus;
+    if (archiveSync !== undefined) patch.archive_sync = archiveSync;
     if (typeof readMessages === 'boolean') patch.read_messages = readMessages;
     if (typeof alwaysOnline === 'boolean') patch.always_online = alwaysOnline;
     if (typeof importHistory === 'boolean') patch.import_history = importHistory;
