@@ -168,6 +168,18 @@ el bloque **"¿Qué número?"** con la opción **"Recuperar un número desvincul
   bandeja nueva pero no la sesión, que sigue en su plazo.
 - Solo aparecen los números de **esa cuenta y ese Chatwoot** (`GET /api/orphans` de AstraCalls, filtrado).
 
+### Editar mensajes desde Chatwoot
+
+Chatwoot no permite editar un mensaje ya enviado. El script agrega **"Editar"** al menú del mensaje (clic derecho
+o los tres puntos) en los mensajes **de texto enviados** (no en notas privadas ni entrantes).
+
+- El agente escribe el texto nuevo; el provisioner valida **con la sesión de Chatwoot del agente** que pertenece a la
+  cuenta y tiene acceso a esa conversación (cualquier agente, no solo administradores) y llama a AstraCalls con la
+  llave maestra (`POST /api/sessions/{sid}/chatwoot/messages/{id}/edit`, rama `lhcia`).
+- AstraCalls edita el mensaje en WhatsApp si salió por WhatsApp desde la cuenta, es de texto y no pasaron **15 minutos**.
+- El mensaje de Chatwoot no cambia: queda una **nota privada "✏️ Editado en WhatsApp:"** con el texto nuevo.
+- Si no se puede (adjunto, más de 15 min…), el agente ve el motivo.
+
 \* Requieren una versión de AstraCalls que lo soporte (`read_receipts`, `device_mode`, `conversation_status`, leído al responder); con otra versión no tienen efecto.
 
 ### Conectar una IA (MCP)

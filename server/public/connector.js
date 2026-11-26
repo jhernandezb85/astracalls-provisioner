@@ -1311,6 +1311,111 @@
     return out;
   }
 
+  // ---------------- editar mensajes (menú del mensaje en la conversación) ----------------
+  // Chatwoot no deja editar un mensaje enviado. Se agrega "Editar" al menú del
+  // mensaje (clic derecho o los tres puntos): edita el mensaje en WhatsApp (hasta
+  // 15 min después de enviado) y AstraCalls deja una nota con el texto nuevo.
+  var CONV_RE = /^\/app\/accounts\/(\d+)\/(?:[^?#]*\/)?conversations\/(\d+)/;
+  var EDIT_ATTR = 'data-astra-edit';
+  var editTarget = null; // { accountId, conversationId, messageId, text }
+  var PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+
+  // Mensaje enviado por la cuenta (no nota privada, no entrante) y de texto.
+  function editableMessage(target) {
+    var c = target && target.closest && target.closest('[data-message-id]');
+    if (!c || !c.classList.contains('justify-end')) return null;
+    var m = location.pathname.match(CONV_RE);
+    if (!m) return null;
+    var b = c.querySelector('[data-bubble-name]');
+    if (!b || b.getAttribute('data-bubble-name') !== 'text' || /\bbg-n-solid-amber\b/.test(b.className)) return null;
+    var body = b.querySelector('.overflow-hidden') || b;
+    return {
+      accountId: Number(m[1]), conversationId: Number(m[2]),
+      messageId: Number(c.getAttribute('data-message-id')),
+      text: String(body.innerText || body.textContent || '').trim()
+    };
+  }
+
+  function rememberTarget(e) {
+    try {
+      if (e.target && e.target.closest && e.target.closest('.menu-container')) return; // clic dentro del menú
+      editTarget = editableMessage(e.target);
+    } catch (err) { editTarget = null; }
+  }
+  document.addEventListener('contextmenu', rememberTarget, true);
+  document.addEventListener('pointerdown', rememberTarget, true);
+
+  function closeChatwootMenu() {
+    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (e) { /* noop */ }
+    try { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); document.body.click(); } catch (e) { /* noop */ }
+  }
+
+  function tryInjectEdit() {
+    if (!editTarget) return;
+    var menu = document.querySelector('.menu-container');
+    if (!menu || menu.querySelector('[' + EDIT_ATTR + ']')) return;
+    var items = menu.querySelectorAll(':scope > .menu');
+    var copy = null;
+    for (var i = 0; i < items.length; i++) {
+      var lab = items[i].querySelector('.menu-label');
+      if (lab && /^(Copiar|Copy|Copiar mensaje)$/i.test(lab.textContent.trim())) { copy = items[i]; break; }
+    }
+    if (!copy) return;
+    var item = copy.cloneNode(true);
+    item.setAttribute(EDIT_ATTR, '1');
+    var svg = item.querySelector('svg');
+    if (svg) svg.outerHTML = PENCIL_SVG;
+    item.querySelector('.menu-label').textContent = 'Editar';
+    var t = editTarget;
+    item.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      closeChatwootMenu();
+      openEditModal(t);
+    });
+    copy.parentNode.insertBefore(item, copy.nextSibling);
+  }
+
+  function openEditModal(t) {
+    if (modal || !t) return;
+    ensureStyle();
+    var ov = el('div', { class: 'astra-ov', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Editar mensaje' });
+    var box = el('div', { class: 'astra-md' + (isDark() ? ' astra-dark' : '') });
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    modal = { root: ov, box: box, accountId: t.accountId, stopped: false, timer: null };
+    modal.onKey = function (e) { if (e.key === 'Escape' && modal && modal.canEsc) { e.stopPropagation(); closeModal(); } };
+    document.addEventListener('keydown', modal.onKey, true);
+    var owner = modal;
+    var ta = el('textarea', { id: 'astra-edit-text', rows: '5', maxlength: '4096', style: 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font:inherit;resize:vertical' });
+    ta.value = t.text;
+    var err = el('div', { class: 'astra-err', style: 'display:none' });
+    var save = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Guardar' });
+    var cancel = el('button', { class: 'astra-b', type: 'button', text: 'Cancelar', onclick: closeModal });
+    save.addEventListener('click', function () {
+      var text = ta.value.trim();
+      if (!text) { err.textContent = 'Escribe el texto nuevo.'; err.style.display = ''; return; }
+      if (text === t.text) { closeModal(); return; }
+      save.disabled = true; cancel.disabled = true; err.style.display = 'none';
+      api('POST', '/message/edit', { accountId: t.accountId, conversationId: t.conversationId, messageId: t.messageId, text: text })
+        .then(function () {
+          if (modal !== owner) return;
+          setBox([el('div', { class: 'astra-ok', text: '✅' }), el('p', { text: 'Mensaje editado en WhatsApp. En la conversación queda una nota con el texto nuevo.' })], true);
+          owner.timer = setTimeout(function () { if (modal === owner) closeModal(); }, 2200);
+        }, function (e) {
+          if (modal !== owner) return;
+          save.disabled = false; cancel.disabled = false;
+          err.textContent = e.message; err.style.display = '';
+        });
+    });
+    setBox([
+      el('h2', { text: 'Editar mensaje' }),
+      el('p', { text: 'Se cambia en el WhatsApp del contacto. Solo mensajes de texto, hasta 15 minutos después de enviarlos. En la conversación queda una nota con el texto nuevo.' }),
+      ta, err,
+      el('div', { class: 'astra-row' }, [cancel, save])
+    ], true);
+    ta.focus();
+  }
+
   function tryInject() {
     try { tryInjectInbox(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
     try { tryInjectCapi(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
@@ -1350,6 +1455,7 @@
   function boot() {
     try {
       new MutationObserver(function () {
+        try { tryInjectEdit(); } catch (e) { /* nunca romper la pantalla de Chatwoot */ }
         try {
           var p = window.location.pathname;
           if (PATH_RE.test(p) || INBOX_RE.test(p) || CAPI_RE.test(p) || document.querySelector('[' + INBOX_ATTR + '],[' + CAPI_ATTR + ']')) schedule();

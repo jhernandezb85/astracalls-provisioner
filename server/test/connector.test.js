@@ -502,3 +502,71 @@ test('sin números desvinculados no aparece la opción de recuperar', async () =
   assert.equal(d.getElementById('astra-recover').closest('div').parentNode.style.display, 'none');
   dom.window.close();
 });
+
+// Conversación con un mensaje enviado (azul), una nota privada (ámbar) y uno entrante.
+const CONV_PAGE = `<div id="app">
+  <div id="message11" class="flex message-bubble-container justify-end" data-message-id="11"><div><div class="right-bubble bg-n-solid-blue" data-bubble-name="text"><div class="overflow-hidden" aria-busy="false">Hola, el precio es 100</div></div></div></div>
+  <div id="message12" class="flex message-bubble-container justify-end" data-message-id="12"><div><div class="right-bubble bg-n-solid-amber" data-bubble-name="text"><div class="overflow-hidden">nota interna</div></div></div></div>
+  <div id="message13" class="flex message-bubble-container justify-start" data-message-id="13"><div><div class="left-bubble bg-n-slate-4" data-bubble-name="text"><div class="overflow-hidden">gracias</div></div></div></div>
+</div>`;
+
+// Simula el menú del mensaje de Chatwoot (se dibuja aparte, en el body).
+function openChatwootMenu(dom, messageId) {
+  const d = dom.window.document;
+  const bubble = d.querySelector(`#message${messageId} [data-bubble-name]`);
+  bubble.dispatchEvent(new dom.window.MouseEvent('contextmenu', { bubbles: true }));
+  const wrap = d.createElement('div');
+  wrap.innerHTML = '<div class="menu-container"><div class="menu" role="button"><svg></svg><p class="menu-label">Responder a este mensaje</p></div><div class="menu" role="button"><svg></svg><p class="menu-label">Copiar</p></div><div class="menu" role="button"><svg></svg><p class="menu-label">Eliminar</p></div></div>';
+  d.body.appendChild(wrap);
+  return wrap;
+}
+
+test('editar: aparece en el menú de un mensaje enviado y lo edita en WhatsApp', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/conversations/55', CONV_PAGE, COOKIE);
+  await tick();
+  const calls = mockApi(dom, { 'POST /message/edit': () => [200, { edited: true }] });
+  const d = dom.window.document;
+  const menu = openChatwootMenu(dom, 11);
+  await tick(30);
+  const labels = [...menu.querySelectorAll('.menu-label')].map((x) => x.textContent);
+  assert.deepEqual(labels, ['Responder a este mensaje', 'Copiar', 'Editar', 'Eliminar']);
+  menu.querySelector('[data-astra-edit]').click();
+  await tick(20);
+  const ta = d.getElementById('astra-edit-text');
+  assert.equal(ta.value, 'Hola, el precio es 100');
+  ta.value = 'Hola, el precio es 120';
+  [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Guardar').click();
+  await tick(50);
+  const b = calls.find((c) => c.key === 'POST /message/edit').body;
+  assert.deepEqual(b, { accountId: 7, conversationId: 55, messageId: 11, text: 'Hola, el precio es 120' });
+  assert.match(d.querySelector('.astra-md').textContent, /editado en WhatsApp/);
+  dom.window.close();
+});
+
+test('editar: no aparece en notas privadas ni en mensajes entrantes', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/conversations/55', CONV_PAGE, COOKIE);
+  await tick();
+  for (const id of [12, 13]) {
+    const menu = openChatwootMenu(dom, id);
+    await tick(30);
+    assert.equal(menu.querySelector('[data-astra-edit]'), null, `mensaje ${id}`);
+    menu.remove();
+  }
+  dom.window.close();
+});
+
+test('editar: si WhatsApp no lo permite, se muestra el motivo', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/conversations/55', CONV_PAGE, COOKIE);
+  await tick();
+  mockApi(dom, { 'POST /message/edit': () => [409, { error: 'WhatsApp solo permite editar durante 15 minutos después de enviar.', code: 'too_late' }] });
+  const d = dom.window.document;
+  const menu = openChatwootMenu(dom, 11);
+  await tick(30);
+  menu.querySelector('[data-astra-edit]').click();
+  await tick(20);
+  d.getElementById('astra-edit-text').value = 'otro texto';
+  [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Guardar').click();
+  await tick(50);
+  assert.match(d.querySelector('.astra-err').textContent, /15 minutos/);
+  dom.window.close();
+});
