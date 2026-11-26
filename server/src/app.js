@@ -133,6 +133,16 @@ function createApp({ cfg, provisioner, log, capiSender }) {
     res.json(await provisioner.availableInboxes(devise, req.query.accountId));
   }));
 
+  // editar en WhatsApp un mensaje enviado desde Chatwoot (cualquier agente de la conversación)
+  api.post('/message/edit', wrap(async (req, res) => {
+    writeLimit(req);
+    const devise = needDevise(req);
+    const b = req.body || {};
+    res.json(await provisioner.editMessage(devise, {
+      accountId: b.accountId, conversationId: b.conversationId, messageId: b.messageId, text: b.text,
+    }));
+  }));
+
   // números desvinculados de la cuenta que se pueden recuperar (24 h desde que se borró su bandeja)
   api.get('/inbox/recoverable', wrap(async (req, res) => {
     if (!limIpStatus(req.ip)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited');

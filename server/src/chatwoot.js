@@ -65,6 +65,14 @@ class ChatwootClient {
     return r.data;
   }
 
+  /** GET de la conversación con el token del agente; null si no existe o no tiene acceso. */
+  async getConversation(accountId, accessToken, conversationId) {
+    const r = await this._json('GET', `/api/v1/accounts/${accountId}/conversations/${conversationId}`, { api_access_token: accessToken });
+    if (r.status === 404 || r.status === 401 || r.status === 403) return null;
+    if (!r.ok || !r.data) throw new HttpError(502, 'No se pudo consultar la conversación en Chatwoot.', 'conversation_get_failed');
+    return r.data;
+  }
+
   /**
    * Devuelve el token del Agent Bot de la cuenta con ese nombre, creándolo si no
    * existe. Lo usa AstraCalls para publicar lo que se escribe desde el celular

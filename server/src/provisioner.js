@@ -92,6 +92,63 @@ class Provisioner {
     }
   }
 
+  _requireMember(profile, accountId) {
+    const acc = (profile.accounts || []).find((a) => Number(a.id) === Number(accountId));
+    if (!acc) throw new HttpError(403, 'No perteneces a esta cuenta.', 'forbidden');
+  }
+
+  // ---------- editar mensajes ----------
+
+  /**
+   * Sesión de AstraCalls conectada a una bandeja (cuenta + bandeja + este
+   * Chatwoot). Se arma con la lista de sesiones de AstraCalls y se guarda 1 min.
+   */
+  async _sidForInbox(acct, inbox) {
+    const t = this.now();
+    if (!this.sidByInbox || t - this.sidByInbox.at > 60000) {
+      const map = new Map();
+      const base = hostOf(this.cfg.chatwootUrl);
+      const sessions = await this.ac.listSessions();
+      await Promise.all(sessions.map(async (s) => {
+        try {
+          const c = await this.ac.getChatwootCfg(s.id);
+          if (c && hostOf(c.url) === base && c.account_id && c.inbox_id) map.set(`${Number(c.account_id)}|${Number(c.inbox_id)}`, s.id);
+        } catch { /* sesión sin Chatwoot */ }
+      }));
+      this.sidByInbox = { at: t, map };
+    }
+    return this.sidByInbox.map.get(`${acct}|${inbox}`) || null;
+  }
+
+  /**
+   * Edita en WhatsApp un mensaje que el agente envió desde Chatwoot. Lo puede
+   * usar cualquier agente de la cuenta con acceso a la conversación (Chatwoot lo
+   * valida con su propio token). AstraCalls comprueba que el mensaje salió por
+   * WhatsApp, es de texto y no pasaron 15 minutos, y deja una nota con el texto nuevo.
+   */
+  async editMessage(devise, { accountId, conversationId, messageId, text }) {
+    const acct = Number(accountId), conv = Number(conversationId), msg = Number(messageId);
+    if (![acct, conv, msg].every((n) => Number.isInteger(n) && n > 0)) throw new HttpError(400, 'Mensaje no válido.', 'bad_request');
+    const body = typeof text === 'string' ? text.trim() : '';
+    if (!body || body.length > 4096) throw new HttpError(400, 'Escribe el texto nuevo (máximo 4096 caracteres).', 'bad_request');
+    const profile = await this._profile(devise);
+    this._requireMember(profile, acct);
+    const token = profile.access_token;
+    if (!token) throw new HttpError(409, 'Tu usuario no tiene token de API disponible.', 'no_api_token');
+    const c = await this.cw.getConversation(acct, token, conv);
+    if (!c) throw new HttpError(404, 'No tienes acceso a esa conversación.', 'conversation_not_found');
+    const sid = await this._sidForInbox(acct, Number(c.inbox_id));
+    if (!sid) throw new HttpError(404, 'Esta conversación no es de WhatsApp + Llamadas.', 'not_managed');
+    const r = await this.ac.editMessage(sid, msg, body, conv);
+    if (r.status >= 200 && r.status < 300) {
+      this.log.info('mensaje editado', { accountId: acct, conversationId: conv });
+      return { edited: true };
+    }
+    const d = r.data || {};
+    const status = r.status === 404 || r.status === 409 ? r.status : 502;
+    throw new HttpError(status, d.message || 'No se pudo editar el mensaje en WhatsApp.', d.error || 'edit_failed');
+  }
+
   // ---------- aprovisionar ----------
 
   /** Token del bot "WhatsApp (celular)" de la cuenta (lo crea si falta). Best-effort: null si no se pudo. */

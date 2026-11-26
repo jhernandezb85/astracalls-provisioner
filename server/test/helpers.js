@@ -30,7 +30,7 @@ function readBody(req) {
 /** Chatwoot simulado. users: uid -> {id, role, accountId, token} */
 async function mockChatwoot(opts = {}) {
   const state = {
-    calls: [], inboxes: new Map(), nextInbox: 100, failCreate: false, bots: [], failBots: false, attrDefs: [], failAttrs: false,
+    calls: [], inboxes: new Map(), conversations: new Map(), nextInbox: 100, failCreate: false, bots: [], failBots: false, attrDefs: [], failAttrs: false,
     users: opts.users || { 'admin@example.com': { id: 1, role: 'administrator', accountId: 7, token: USER_TOKEN } },
   };
   const { server, url } = await listen(async (req, res) => {
@@ -94,6 +94,12 @@ async function mockChatwoot(opts = {}) {
         return send(200, view(b));
       }
     }
+    // conversación: solo la ven los tokens con acceso (tokens: lista; sin lista = todos)
+    if (req.method === 'GET' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/conversations\/(\d+)$/))) {
+      const c = state.conversations.get(Number(m[2]));
+      if (!c || (c.tokens && !c.tokens.includes(req.headers.api_access_token))) return send(404, {});
+      return send(200, { id: Number(m[2]), inbox_id: c.inbox_id });
+    }
     if (req.method === 'DELETE' && (m = req.url.match(/^\/api\/v1\/accounts\/(\d+)\/inboxes\/(\d+)$/))) {
       state.inboxes.delete(Number(m[2]));
       return send(200, {});
@@ -132,6 +138,7 @@ async function mockAstraCalls(opts = {}) {
       else if (req.method === 'DELETE' && sub.startsWith('mcp-keys/')) op = 'deleteMcp';
       else if (req.method === 'POST' && sub === 'pair') op = 'pair';
       else if (req.method === 'POST' && sub === 'pair-code') op = 'pairCode';
+      else if (req.method === 'POST' && /^chatwoot\/messages\/\d+\/edit$/.test(sub)) op = 'editMessage';
     }
     state.calls.push({ op, method: req.method, path: req.url, body });
     if (!op) return send(404, {});
@@ -143,6 +150,7 @@ async function mockAstraCalls(opts = {}) {
     const sess = m && state.sessions.get(m[1]);
     if (m && !sess && op !== 'deleteSession') return send(404, { error: 'no session' });
     if (op === 'pairCode') return send(200, { code: 'ABCD1234' });
+    if (op === 'editMessage') { const [code, obj] = state.editResult || [200, { edited: true }]; return send(code, obj); }
     if (op === 'setChatwoot') {
       // igual que AstraCalls: parte de la config actual y conserva el token si viene vacío
       const cur = sess.chatwoot || {};

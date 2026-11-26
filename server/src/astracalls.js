@@ -30,7 +30,7 @@ class AstraCallsClient {
     return `${this.publicUrl}/api/sessions/${sid}/chatwoot/webhook`;
   }
 
-  async _req(method, path, body, { allow404 = false } = {}) {
+  async _req(method, path, body, { allow404 = false, raw = false } = {}) {
     let res;
     try {
       res = await fetchT(this.baseUrl + path, {
@@ -44,7 +44,7 @@ class AstraCallsClient {
     const text = await res.text();
     let data = null;
     if (text) { try { data = JSON.parse(text); } catch { data = null; } }
-    if (allow404 && res.status === 404) return { status: 404, data };
+    if (raw || (allow404 && res.status === 404)) return { status: res.status, data };
     if (!res.ok) {
       const detail = data && data.error ? String(data.error).slice(0, 200) : '';
       throw new HttpError(502, `AstraCalls rechazó la operación (${method} ${path.replace(/\/api\/sessions\/[^/]+/, '/api/sessions/{sid}')}, HTTP ${res.status})${detail ? ': ' + detail : ''}.`, 'astracalls_error');
@@ -109,6 +109,16 @@ class AstraCallsClient {
 
   mcpEndpoint() {
     return `${this.publicUrl}/mcp`;
+  }
+
+  /**
+   * Edita en WhatsApp un mensaje enviado desde Chatwoot (máx. 15 min). Devuelve
+   * { status, data } tal cual: data.error es el motivo y data.message el texto
+   * para mostrar al agente.
+   */
+  async editMessage(sid, cwMessageId, text, conversationId) {
+    return this._req('POST', `/api/sessions/${encodeURIComponent(sid)}/chatwoot/messages/${encodeURIComponent(cwMessageId)}/edit`,
+      { text, conversationId }, { raw: true });
   }
 
   /** Sesiones en espera de borrado (su bandeja de Chatwoot se borró). */
