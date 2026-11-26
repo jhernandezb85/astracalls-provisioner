@@ -111,6 +111,12 @@ class AstraCallsClient {
     return `${this.publicUrl}/mcp`;
   }
 
+  /** Sesiones en espera de borrado (su bandeja de Chatwoot se borró). */
+  async listOrphans() {
+    const r = await this._req('GET', '/api/orphans');
+    return (r.data && r.data.orphans) || [];
+  }
+
   async listSessions() {
     const r = await this._req('GET', '/api/sessions');
     return (r.data && r.data.sessions) || [];

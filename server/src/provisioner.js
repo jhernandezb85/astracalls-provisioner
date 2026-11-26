@@ -134,7 +134,33 @@ class Provisioner {
     };
   }
 
-  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi, deviceMode, existingInboxId }) {
+  /** Sesiones huérfanas de ESTA cuenta y ESTE Chatwoot (la bandeja se borró hace menos de 24 h). */
+  async _orphansFor(acct) {
+    const base = String(this.cfg.chatwootUrl || '').replace(/\/+$/, '');
+    const list = await this.ac.listOrphans();
+    return list.filter((o) => Number(o.accountId) === acct && String(o.chatwootUrl || '').replace(/\/+$/, '') === base);
+  }
+
+  /**
+   * Números desvinculados de la cuenta que todavía se pueden recuperar: se borró
+   * su bandeja y AstraCalls los guarda 24 h. Recuperar = conectarlo a una bandeja
+   * y escanear el QR con el mismo número; conserva su historial y configuración.
+   */
+  async recoverableNumbers(devise, accountId) {
+    const acct = Number(accountId);
+    if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
+    const profile = await this._profile(devise);
+    this._requireAdmin(profile, acct);
+    const list = await this._orphansFor(acct);
+    return {
+      numbers: list
+        .filter((o) => Number(o.purgeAt) > this.now())
+        .sort((a, b) => Number(a.purgeAt) - Number(b.purgeAt))
+        .map((o) => ({ sessionId: String(o.sessionId), name: String(o.name || ''), phone: String(o.phone || ''), purgeAt: Number(o.purgeAt) })),
+    };
+  }
+
+  async provision({ devise, accountId, inboxName, phone, record, method, importHistory, importHistoryDays, mirrorApi, deviceMode, existingInboxId, recoverSessionId }) {
     const histDays = clampDays(importHistoryDays);
     const acct = Number(accountId);
     if (!Number.isInteger(acct) || acct <= 0) throw new HttpError(400, 'Cuenta no válida.', 'bad_request');
@@ -142,6 +168,11 @@ class Provisioner {
     if (existingInboxId !== undefined && existingInboxId !== null && existingInboxId !== '') {
       existingId = Number(existingInboxId);
       if (!Number.isInteger(existingId) || existingId <= 0) throw new HttpError(400, 'Bandeja no válida.', 'bad_request');
+    }
+    let recoverSid = null;
+    if (recoverSessionId !== undefined && recoverSessionId !== null && recoverSessionId !== '') {
+      recoverSid = String(recoverSessionId);
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(recoverSid)) throw new HttpError(400, 'Número a recuperar no válido.', 'bad_request');
     }
     let name = sanitizeInboxName(inboxName);
     if (!name && !existingId) throw new HttpError(400, 'Escribe un nombre para la bandeja.', 'bad_request');
@@ -193,14 +224,22 @@ class Provisioner {
       name = sanitizeInboxName(ib.name) || name || 'WhatsApp';
     }
 
+    // número a recuperar: debe estar en espera de borrado y ser de ESTA cuenta y ESTE Chatwoot
+    let recover = null;
+    if (recoverSid) {
+      recover = (await this._orphansFor(acct)).find((o) => String(o.sessionId) === recoverSid && Number(o.purgeAt) > this.now()) || null;
+      if (!recover) throw new HttpError(404, 'Ese número ya no se puede recuperar (pasaron las 24 h o ya se recuperó).', 'recover_not_found');
+    }
+
     hist.push(t);
     this.accountHistory.set(acct, hist);
 
-    const created = { sid: null, inboxId: null, reuse };
+    // recovered: la sesión ya existía; al revertir NO se borra (sigue en su plazo de 24 h)
+    const created = { sid: null, inboxId: null, reuse, recovered: !!recover };
     let code = '';
     try {
-      // 2) Sesión en AstraCalls
-      created.sid = await this.ac.createSession(name);
+      // 2) Sesión en AstraCalls (nueva, o la del número desvinculado que se recupera)
+      created.sid = recover ? recover.sessionId : await this.ac.createSession(name);
       // 3) Bandeja API en Chatwoot con el webhook de esa sesión (o la existente, con el webhook cambiado)
       let inbox;
       if (reuse) {
@@ -234,7 +273,9 @@ class Provisioner {
       // 5) Grabación
       if (record) await this.ac.setRecording(created.sid, true);
       // 6) Emparejamiento. AstraCalls ya arranca el QR al crear la sesión; para "code" se pide el código.
+      //    La sesión recuperada estaba desvinculada: hay que pedirle un QR nuevo.
       if (method === 'code') code = await this.ac.pairCode(created.sid, digits);
+      else if (recover) await this.ac.pair(created.sid);
     } catch (e) {
       const rolled = await this._rollback(acct, token, created);
       const base = e instanceof HttpError ? e : new HttpError(500, 'Error inesperado al configurar la conexión.', 'internal');
@@ -246,11 +287,11 @@ class Provisioner {
     const id = newId();
     const created_at = this.now();
     this.items.set(id, {
-      id, ownerUid: profile.id, accountId: acct, sid: created.sid, inboxId: created.inboxId, reuse,
+      id, ownerUid: profile.id, accountId: acct, sid: created.sid, inboxId: created.inboxId, reuse, recovered: !!recover,
       method, code, record: !!record, phone: digits, token, createdAt: created_at,
       expiresAt: created_at + this.cfg.ttlMs, lastPair: created_at, connected: false, connectedPhone: '', cancelled: false,
     });
-    this.log.info('provision creada', { provisionId: id, accountId: acct, inboxId: created.inboxId, method, existingInbox: !!reuse });
+    this.log.info('provision creada', { provisionId: id, accountId: acct, inboxId: created.inboxId, method, existingInbox: !!reuse, recovered: !!recover });
     return { provisionId: id };
   }
 
@@ -262,7 +303,8 @@ class Provisioner {
     } else if (created.inboxId) {
       try { if (!(await this.cw.deleteInbox(accountId, token, created.inboxId))) ok = false; } catch { ok = false; }
     }
-    if (created.sid) {
+    // sesión recuperada: no se borra; sigue desvinculada y en su plazo de 24 h
+    if (created.sid && !created.recovered) {
       try { await this.ac.deleteSession(created.sid); } catch { ok = false; }
     }
     return ok;
@@ -565,7 +607,7 @@ class Provisioner {
     item.cancelled = true;
     const token = item.token;
     item.token = null;
-    const rolled = await this._rollback(item.accountId, token, { sid: item.sid, inboxId: item.inboxId, reuse: item.reuse });
+    const rolled = await this._rollback(item.accountId, token, { sid: item.sid, inboxId: item.inboxId, reuse: item.reuse, recovered: item.recovered });
     this.log.info('provision descartada', { provisionId: item.id, accountId: item.accountId, rolledBack: rolled });
   }
 

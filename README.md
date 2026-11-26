@@ -156,6 +156,18 @@ y los flujos que usan el ID de la bandeja.
   sesión de esa instancia (`DELETE /instance/logout/{instancia}`); no la borra. Si se cancela o el QR expira,
   Evolution no se toca.
 
+### Recuperar un número desvinculado
+
+Si se borra en Chatwoot la bandeja de un número, AstraCalls (rama `lhcia`) lo **desvincula** de WhatsApp y guarda
+la sesión **24 horas** (historial, llaves MCP y configuración) antes de borrarla. Mientras tanto, el modal muestra
+el bloque **"¿Qué número?"** con la opción **"Recuperar un número desvinculado"** y la cuenta atrás de cada uno.
+
+- Se elige el número, una bandeja (nueva o existente) y se vincula con QR o código **con el mismo número**.
+- La bandeja borrada perdió sus conversaciones: se puede activar **Importar conversaciones**.
+- El plazo de 24 h solo se detiene cuando el número **vuelve a vincularse**. Si se cancela o expira, se borra la
+  bandeja nueva pero no la sesión, que sigue en su plazo.
+- Solo aparecen los números de **esa cuenta y ese Chatwoot** (`GET /api/orphans` de AstraCalls, filtrado).
+
 \* Requieren una versión de AstraCalls que lo soporte (`read_receipts`, `device_mode`, `conversation_status`, leído al responder); con otra versión no tienen efecto.
 
 ### Conectar una IA (MCP)

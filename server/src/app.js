@@ -120,6 +120,7 @@ function createApp({ cfg, provisioner, log, capiSender }) {
       importHistory: b.importHistory === true, importHistoryDays: b.importHistoryDays, mirrorApi: b.mirrorApi === true,
       deviceMode: typeof b.deviceMode === 'string' ? b.deviceMode : undefined,
       existingInboxId: b.existingInboxId,
+      recoverSessionId: b.recoverSessionId,
     });
     res.status(201).json(out);
   }));
@@ -130,6 +131,14 @@ function createApp({ cfg, provisioner, log, capiSender }) {
     const devise = needDevise(req);
     res.setHeader('Cache-Control', 'no-store');
     res.json(await provisioner.availableInboxes(devise, req.query.accountId));
+  }));
+
+  // números desvinculados de la cuenta que se pueden recuperar (24 h desde que se borró su bandeja)
+  api.get('/inbox/recoverable', wrap(async (req, res) => {
+    if (!limIpStatus(req.ip)) throw new HttpError(429, 'Demasiadas consultas. Espera unos segundos.', 'rate_limited');
+    const devise = needDevise(req);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await provisioner.recoverableNumbers(devise, req.query.accountId));
   }));
 
   // ---- configuración de una bandeja ya conectada ----

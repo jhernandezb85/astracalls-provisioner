@@ -495,6 +495,57 @@
       existing.textContent = '';
       existing.appendChild(el('option', { value: '', text: 'No se pudieron cargar las bandejas' }));
     });
+    // número: nuevo, o recuperar uno desvinculado (se borró su bandeja; AstraCalls lo guarda 24 h)
+    var recovering = false;
+    var optFresh = el('label', { class: 'astra-opt' }), optRecover = el('label', { class: 'astra-opt' });
+    var rFresh = el('input', { type: 'radio', name: 'astra-num', value: 'new' }), rRecover = el('input', { type: 'radio', name: 'astra-num', value: 'recover' });
+    optFresh.appendChild(rFresh); optFresh.appendChild(el('span', null, ['Un número nuevo', el('small', { text: 'Vincula un número que no estaba conectado.' })]));
+    optRecover.appendChild(rRecover); optRecover.appendChild(el('span', null, ['Recuperar un número desvinculado', el('small', { text: 'Su bandeja se borró hace menos de 24 h. Conserva su historial y configuración.' })]));
+    var recSel = el('select', { id: 'astra-recover', style: 'width:100%!important;display:block!important;margin-top:4px!important;padding:8px 10px' });
+    var recHint = el('div', { class: 'astra-h' });
+    var recSelBox = el('div', null, [el('label', { class: 'astra-l', for: 'astra-recover', text: 'Número a recuperar' }), recSel, recHint]);
+    var recBox = el('div', { style: 'display:none' }, [
+      el('div', { class: 'astra-l', text: '¿Qué número?', style: 'font-weight:500' }), optFresh, optRecover, recSelBox
+    ]);
+    var recList = [];
+    var autoFill = { name: '', phone: '' };
+    function leftText(ms) {
+      if (ms <= 0) return 'en cualquier momento';
+      var h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+      return h > 0 ? h + ' h ' + m + ' min' : m + ' min';
+    }
+    function syncRecover() {
+      recovering = rRecover.checked;
+      optFresh.className = 'astra-opt' + (recovering ? '' : ' astra-on');
+      optRecover.className = 'astra-opt' + (recovering ? ' astra-on' : '');
+      recSelBox.style.display = recovering ? '' : 'none';
+      var n = null;
+      for (var i = 0; i < recList.length; i++) if (recList[i].sessionId === recSel.value) n = recList[i];
+      if (recovering && n) {
+        // se rellena si el campo está vacío, con el valor por defecto o con lo que rellenamos antes
+        var nv = name.value.trim(), pv = phone.value.trim();
+        if (n.phone && (!pv || pv === autoFill.phone)) { phone.value = n.phone; autoFill.phone = n.phone; }
+        if (n.name && (!nv || nv === 'WhatsApp' || nv === autoFill.name)) { name.value = n.name; autoFill.name = n.name; }
+        recHint.textContent = 'Vincúlalo con el mismo número' + (n.phone ? ' (+' + n.phone + ')' : '') +
+          '. Si no lo recuperas, se borra en ' + leftText(n.purgeAt - Date.now()) + ' y ya no se puede recuperar.';
+      }
+    }
+    rFresh.checked = true;
+    rFresh.addEventListener('change', syncRecover); rRecover.addEventListener('change', syncRecover);
+    recSel.addEventListener('change', syncRecover);
+    api('GET', '/inbox/recoverable?accountId=' + encodeURIComponent(modal.accountId)).then(function (r) {
+      if (gone()) return;
+      recList = (r && r.numbers) || [];
+      if (!recList.length) return;
+      recSel.textContent = '';
+      recList.forEach(function (n) {
+        recSel.appendChild(el('option', { value: n.sessionId, text: (n.name || 'Número') + (n.phone ? ' · +' + n.phone : '') }));
+      });
+      if (prev.recoverSessionId) { recSel.value = prev.recoverSessionId; rRecover.checked = true; }
+      recBox.style.display = '';
+      syncRecover();
+    }, function () { /* sin lista: se conecta un número nuevo */ });
+
     var optQr = el('label', { class: 'astra-opt' }), optCode = el('label', { class: 'astra-opt' });
     var rQr = el('input', { type: 'radio', name: 'astra-m', value: 'qr' }), rCode = el('input', { type: 'radio', name: 'astra-m', value: 'code' });
     optQr.appendChild(rQr); optQr.appendChild(el('span', null, ['Escanear QR', el('small', { text: 'Escanea un código con la cámara de WhatsApp.' })]));
@@ -514,7 +565,9 @@
       var digits = p.replace(/\D/g, '');
       var msg = '';
       var exId = useExisting ? Number(existing.value) : 0;
-      if (useExisting && !exId) msg = 'Elige la bandeja existente que quieres conectar.';
+      var recId = recovering ? recSel.value : '';
+      if (recovering && !recId) msg = 'Elige el número que quieres recuperar.';
+      else if (useExisting && !exId) msg = 'Elige la bandeja existente que quieres conectar.';
       else if (!useExisting && !n) msg = 'Escribe un nombre para la bandeja.';
       else if (p && (digits.length < 8 || digits.length > 15 || !/^\+?[\d\s\-()]+$/.test(p))) msg = 'El número no es válido: usa solo dígitos con código de país (ej. 5215512345678).';
       else if (method === 'code' && !digits) msg = 'Para el código de 8 caracteres necesitas escribir tu número con código de país.';
@@ -522,13 +575,15 @@
       start({
         name: n, phone: digits, record: rec.checked, method: method,
         mirrorApi: mirror.checked, importHistory: !useExisting && hist.checked, importHistoryDays: Number(histDays.value),
-        existingInboxId: exId || null
+        existingInboxId: exId || null,
+        recoverSessionId: recId || null
       });
     });
 
     setBox([
       el('h2', { text: 'WhatsApp + Llamadas' }),
       el('p', { text: 'Conecta tu número de WhatsApp para chatear y recibir/hacer llamadas desde este CRM.' }),
+      recBox,
       optNew, optOld, existingBox, nameBox,
       el('label', { class: 'astra-l', for: 'astra-phone', text: 'Número de WhatsApp (con código de país)' }), phone,
       el('div', { class: 'astra-h', text: 'Solo dígitos, sin espacios. Ej.: 5215512345678' }),
@@ -565,7 +620,8 @@
     api('POST', '/provision', {
       accountId: modal.accountId, inboxName: form.name, phone: form.phone, record: form.record, method: form.method,
       mirrorApi: !!form.mirrorApi, importHistory: !!form.importHistory, importHistoryDays: form.importHistoryDays || 30,
-      existingInboxId: form.existingInboxId || undefined
+      existingInboxId: form.existingInboxId || undefined,
+      recoverSessionId: form.recoverSessionId || undefined
     })
       .then(function (r) {
         if (!modal || modal.stopped) {

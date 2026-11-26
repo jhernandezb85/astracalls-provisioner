@@ -322,6 +322,7 @@ test('flujo completo con cookie devise: envía headers, muestra QR y luego ¡Lis
   dom.window.fetch = (url, opts) => {
     const json = (o, status = 200) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(o) });
     if (String(url).includes('/inbox/available')) return json({ inboxes: [] });
+    if (String(url).includes('/inbox/recoverable')) return json({ numbers: [] });
     seen.push({ url, method: opts.method, headers: opts.headers, body: opts.body });
     if (opts.method === 'POST') return json({ provisionId: 'P1' }, 201);
     polls++;
@@ -459,5 +460,45 @@ test('bandeja que viene de otro proveedor: muestra el aviso con alerta', async (
   assert.equal(alert.style.display, '');
   assert.match(alert.textContent, /otro proveedor/);
   assert.match(alert.textContent, /no se podrá deshacer/);
+  dom.window.close();
+});
+
+test('recuperar un número desvinculado: aparece solo si hay, precarga el número y lo envía', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, COOKIE);
+  await tick();
+  const calls = mockApi(dom, {
+    'GET /inbox/available': () => [200, { inboxes: [] }],
+    'GET /inbox/recoverable': () => [200, { numbers: [{ sessionId: 'old1', name: 'Ventas viejo', phone: '5215500000000', purgeAt: Date.now() + 5 * 3600000 }] }],
+    'POST /provision': () => [500, { error: 'x' }],
+  });
+  const d = dom.window.document;
+  d.querySelector('[data-astra-card]').click();
+  await tick(50);
+  const sel = d.getElementById('astra-recover');
+  assert.ok(sel.closest('div').parentNode.style.display !== 'none', 'el bloque aparece');
+  const rRec = d.querySelector('input[name="astra-num"][value="recover"]');
+  rRec.checked = true;
+  rRec.dispatchEvent(new dom.window.Event('change'));
+  assert.equal(d.getElementById('astra-phone').value, '5215500000000');
+  assert.equal(d.getElementById('astra-name').value, 'Ventas viejo');
+  assert.match(d.querySelector('.astra-md').textContent, /mismo número \(\+5215500000000\)/);
+  [...d.querySelectorAll('.astra-md button')].find((b) => b.textContent === 'Conectar').click();
+  await tick(80);
+  const b = calls.find((c) => c.key === 'POST /provision').body;
+  assert.equal(b.recoverSessionId, 'old1');
+  dom.window.close();
+});
+
+test('sin números desvinculados no aparece la opción de recuperar', async () => {
+  const dom = boot('https://crm.example.com/app/accounts/7/settings/inboxes/new', PAGE, COOKIE);
+  await tick();
+  mockApi(dom, {
+    'GET /inbox/available': () => [200, { inboxes: [] }],
+    'GET /inbox/recoverable': () => [200, { numbers: [] }],
+  });
+  const d = dom.window.document;
+  d.querySelector('[data-astra-card]').click();
+  await tick(50);
+  assert.equal(d.getElementById('astra-recover').closest('div').parentNode.style.display, 'none');
   dom.window.close();
 });

@@ -105,7 +105,7 @@ async function mockChatwoot(opts = {}) {
 
 /** AstraCalls simulado. fail: nombre de operación que debe fallar con 500. */
 async function mockAstraCalls(opts = {}) {
-  const state = { calls: [], sessions: new Map(), next: 1, fail: opts.fail || null, authKeyOk: true };
+  const state = { calls: [], sessions: new Map(), next: 1, fail: opts.fail || null, authKeyOk: true, orphans: [] };
   const { server, url } = await listen(async (req, res) => {
     const body = await readBody(req);
     const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(obj === undefined ? '' : JSON.stringify(obj)); };
@@ -119,6 +119,7 @@ async function mockAstraCalls(opts = {}) {
     let op = null; let m;
     if (req.method === 'POST' && req.url === '/api/sessions') op = 'createSession';
     else if (req.method === 'GET' && req.url === '/api/sessions') op = 'list';
+    else if (req.method === 'GET' && req.url === '/api/orphans') op = 'orphans';
     else if ((m = req.url.match(/^\/api\/sessions\/([^/]+)(?:\/(.+))?$/))) {
       const sub = m[2] || '';
       if (req.method === 'DELETE' && !sub) op = 'deleteSession';
@@ -136,6 +137,7 @@ async function mockAstraCalls(opts = {}) {
     if (!op) return send(404, {});
     if (state.fail === op) return send(500, { error: 'boom ' + op });
     if (op === 'createSession') { const id = 'sess' + state.next++; state.sessions.set(id, { name: body.name }); return send(200, { id }); }
+    if (op === 'orphans') return send(200, { orphans: state.orphans });
     if (op === 'list') return send(200, { sessions: [...state.sessions].map(([id, s]) => ({ id, name: s.name, state: s.state || 'connecting', paired: !!s.paired, jid: s.jid || '' })) });
     if (op === 'deleteSession') { state.sessions.delete(m[1]); return send(204); }
     const sess = m && state.sessions.get(m[1]);
