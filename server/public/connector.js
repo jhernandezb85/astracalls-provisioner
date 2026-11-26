@@ -1386,7 +1386,7 @@
     modal.onKey = function (e) { if (e.key === 'Escape' && modal && modal.canEsc) { e.stopPropagation(); closeModal(); } };
     document.addEventListener('keydown', modal.onKey, true);
     var owner = modal;
-    var ta = el('textarea', { id: 'astra-edit-text', rows: '5', maxlength: '4096', style: 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font:inherit;resize:vertical' });
+    var ta = el('textarea', { id: 'astra-edit-text', rows: '5', maxlength: '4096', style: 'width:100%!important;box-sizing:border-box!important;padding:8px 10px!important;border-radius:8px;border:1px solid var(--a-bd);background:var(--a-in);color:var(--a-fg);font:inherit;line-height:1.5!important;min-height:calc(7.5em + 16px)!important;max-height:60vh!important;resize:vertical!important' });
     ta.value = t.text;
     var err = el('div', { class: 'astra-err', style: 'display:none' });
     var save = el('button', { class: 'astra-b astra-pri', type: 'button', text: 'Guardar' });
